@@ -1,4 +1,3 @@
-Nih kode nya
 import discord
 from discord.ext import commands
 import os
