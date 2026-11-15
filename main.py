@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands
-from discord import app_commands
 import os
 
 intents = discord.Intents.default()
@@ -19,53 +18,48 @@ async def on_ready():
     except Exception as e:
         print(e)
 
-# --- DATA PRODUK SESUAI BANNER KAMU ---
-PRODUCTS = {
-    "simple": {
-        "name": "💎 SIMPLE",
-        "price": "Rp 25.000",
-        "desc": "Ticket + QRIS + Status + Close",
-        "kategori": "Jasa Buat Bot"
+# --- DATA KATALOG ALA ISSA STORE - 4 HALAMAN ---
+PAGES = [
+    {
+        "title": "💎 Paket Hemat",
+        "kategori": "Jasa Buat Bot",
+        "rate": "Mulai Rp 25.000",
+        "list": "• SIMPLE - Rp 25.000\n  └ 🏷️ Ticket + QRIS + Status + Close\n• MEDIUM - Rp 50.000\n  └ 🏷️ Simple + Saldo + Leaderboard + Vouch + Giveaway",
+        "options": [("💎 SIMPLE - Rp 25.000", "simple"), ("🛡️ MEDIUM - Rp 50.000", "medium")]
     },
-    "medium": {
-        "name": "🛡️ MEDIUM",
-        "price": "Rp 50.000",
-        "desc": "Simple + Saldo + Leaderboard + Vouch + Giveaway",
-        "kategori": "Jasa Buat Bot"
+    {
+        "title": "⭐ Paket Best Seller",
+        "kategori": "Jasa Buat Bot",
+        "rate": "Mulai Rp 100.000",
+        "list": "• FULL - Rp 100.000\n  └ 🏷️ Medium + Promo + Anti Jualan + History + 7 Produk + Custom + Diajarin Sampai Bisa",
+        "options": [("⭐ FULL - Rp 100.000", "full")]
     },
-    "full": {
-        "name": "⭐ FULL - BEST SELLER",
-        "price": "Rp 100.000",
-        "desc": "Medium + Promo + Anti Jualan + History + 7 Produk + Custom + Di ajarin Sampai Bisa",
-        "kategori": "Jasa Buat Bot"
+    {
+        "title": "👑 Paket Sultan",
+        "kategori": "Jasa Buat Bot",
+        "rate": "Mulai Rp 150.000",
+        "list": "• PREMIUM - Rp 150.000\n  └ 🏷️ Semua Full + 7 Fitur Custom + Setup Hosting + Support Lifetime\n• SULTAN - Rp 250.000\n  └ 🏷️ Semua Premium + 5 Fitur Custom + 2 Bot + Banner Gratis + VIP\n• GOD - Rp 500.000\n  └ 🏷️ Semua Sultan + Unlimited + Source Code + Partner MIPI",
+        "options": [("👑 PREMIUM - Rp 150.000", "premium"), ("🔥 SULTAN - Rp 250.000", "sultan"), ("🧊 GOD - Rp 500.000", "god")]
     },
-    "premium": {
-        "name": "👑 PREMIUM",
-        "price": "Rp 150.000",
-        "desc": "Semua Full + 7 Fitur Custom + Setup Hosting + Support Lifetime + Revisi Unlimited",
-        "kategori": "Jasa Buat Bot"
+    {
+        "title": "🎵 Bot Music",
+        "kategori": "Bot Ready",
+        "rate": "Rp 30.000",
+        "list": "• BOT MUSIC - Rp 30.000\n  └ 🏷️ Music 24/7 + Play / Skip / Queue + Spotify & Youtube",
+        "options": [("🎵 BOT MUSIC - Rp 30.000", "music")]
     },
-    "sultan": {
-        "name": "🔥 SULTAN",
-        "price": "Rp 250.000",
-        "desc": "Semua Premium + 5 Fitur Custom + 2 Bot Sekaligus + Logo Banner Gratis + Private Support VIP + Garansi Seumur Hidup",
-        "kategori": "Jasa Buat Bot"
-    },
-    "god": {
-        "name": "🧊 GOD",
-        "price": "Rp 500.000",
-        "desc": "Semua Sultan + Unlimited Bot + Unlimited Fitur + Source Code Bot + Setup Server Full + Di ajarin Jualan + Partner MIPI STORE",
-        "kategori": "Jasa Buat Bot"
-    },
-    "music": {
-        "name": "🎵 BOT MUSIC",
-        "price": "Rp 30.000",
-        "desc": "Bot Music 24/7 + Play / Skip / Queue + Support Spotify & Youtube",
-        "kategori": "Bot Ready"
-    },
+]
+
+PRODUCTS_DETAIL = {
+    "simple": ("💎 SIMPLE", "Rp 25.000", "Ticket + QRIS + Status + Close"),
+    "medium": ("🛡️ MEDIUM", "Rp 50.000", "Simple + Saldo + Leaderboard + Vouch + Giveaway"),
+    "full": ("⭐ FULL", "Rp 100.000", "Medium + Promo + Anti Jualan + History + 7 Produk + Custom + Diajarin Sampai Bisa"),
+    "premium": ("👑 PREMIUM", "Rp 150.000", "Semua Full + 7 Fitur Custom + Setup Hosting + Support Lifetime + Revisi Unlimited"),
+    "sultan": ("🔥 SULTAN", "Rp 250.000", "Semua Premium + 5 Fitur Custom + 2 Bot + Banner Gratis + VIP + Garansi Seumur Hidup"),
+    "god": ("🧊 GOD", "Rp 500.000", "Semua Sultan + Unlimited Bot + Unlimited Fitur + Source Code + Setup Server Full + Diajarin Jualan + Partner MIPI"),
+    "music": ("🎵 BOT MUSIC", "Rp 30.000", "Music 24/7 + Play / Skip / Queue + Spotify & Youtube"),
 }
 
-# --- FUNGSI BIKIN TICKET (DIPAKE SAMA TOMBOL) ---
 async def create_ticket(interaction, paket_nama=""):
     guild = interaction.guild
     category = None
@@ -82,11 +76,7 @@ async def create_ticket(interaction, paket_nama=""):
         guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_messages=True),
     }
     channel = await guild.create_text_channel(name=f"ticket-{interaction.user.name}", category=category, overwrites=overwrites)
-    embed = discord.Embed(
-        title="🎫 TICKET JASA BUAT BOT - MIPI STORE",
-        description=f"Halo {interaction.user.mention}!\n\nKamu order paket **{paket_nama}** 💖\nSilahkan isi format di bawah!\n\n**FORMAT ORDER:**\n```\nNama :\nJenis Bot : (Store / Ticket / Welcome / Music / Moderation / Custom)\nPaket : {paket_nama}\nFitur Yang Mau :\nBudget :\nDeadline :\n```\nPembayaran via **QRIS** ya!",
-        color=0xFF69B4
-    )
+    embed = discord.Embed(title="🎫 TICKET JASA BUAT BOT - MIPI STORE", description=f"Halo {interaction.user.mention}!\n\nKamu order **{paket_nama}** 💖\n\n**FORMAT ORDER:**\n```\nNama :\nJenis Bot : (Store / Ticket / Welcome / Music / Moderation / Custom)\nPaket : {paket_nama}\nFitur Yang Mau :\nBudget :\nDeadline :\n```\nPembayaran via **QRIS** ya!", color=0xFF69B4)
     await channel.send(embed=embed, view=CloseTicketView())
     return channel
 
@@ -99,43 +89,53 @@ class CloseTicketView(discord.ui.View):
         await interaction.channel.delete()
 
 class OrderButton(discord.ui.View):
-    def __init__(self, paket_key):
+    def __init__(self, key):
         super().__init__(timeout=None)
-        self.paket_key = paket_key
+        self.key = key
     @discord.ui.button(label="🛒 Order / Beli Sekarang", style=discord.ButtonStyle.green, custom_id="order_now")
     async def order_now(self, interaction: discord.Interaction, button: discord.ui.Button):
-        produk = PRODUCTS[self.paket_key]
-        channel = await create_ticket(interaction, produk["name"])
+        nama, harga, desc = PRODUCTS_DETAIL[self.key]
+        channel = await create_ticket(interaction, f"{nama} - {harga}")
         await interaction.response.send_message(f"Order kamu dibuat! 👉 {channel.mention}", ephemeral=True)
 
-# --- SELECT MENU KATALOG KAYAK ISSA STORE ---
-class ProductSelect(discord.ui.Select):
-    def __init__(self):
-        options = []
-        for key, p in PRODUCTS.items():
-            options.append(discord.SelectOption(label=f"{p['name']} - {p['price']}", description=p['desc'][:90], value=key, emoji="💖"))
-        super().__init__(placeholder="🛒 Pilih Produk untuk Order / Beli...", options=options, custom_id="product_select")
-
+class CatalogSelect(discord.ui.Select):
+    def __init__(self, page_idx):
+        page = PAGES[page_idx]
+        options = [discord.SelectOption(label=label, value=val) for label, val in page["options"]]
+        super().__init__(placeholder="🛒 Pilih Produk untuk Order / Beli...", options=options, custom_id="catalog_select")
     async def callback(self, interaction: discord.Interaction):
         key = self.values[0]
-        p = PRODUCTS[key]
-        embed = discord.Embed(title="Mipi Store CATALOG", description=f"**{p['name']}**\n\n**Kategori :** {p['kategori']}\n**Harga :** {p['price']}\n\n**List Fitur :**\n• {p['desc']}", color=0xFF69B4)
-        embed.set_footer(text="Mipi Store • Jasa Buat Bot DC")
+        nama, harga, desc = PRODUCTS_DETAIL[key]
+        embed = discord.Embed(title="Mipi Store CATALOG", description=f"**{nama}**\n\n**Harga :** {harga}\n\n**List Fitur :**\n• {desc}", color=0xFF69B4)
         await interaction.response.send_message(embed=embed, view=OrderButton(key), ephemeral=True)
 
-class ProductView(discord.ui.View):
-    def __init__(self):
+class CatalogView(discord.ui.View):
+    def __init__(self, page=0):
         super().__init__(timeout=None)
-        self.add_item(ProductSelect())
+        self.page = page
+        self.add_item(CatalogSelect(page))
+    @discord.ui.button(label="PREV", style=discord.ButtonStyle.gray, custom_id="prev_btn")
+    async def prev_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        new_page = (self.page - 1) % len(PAGES)
+        await interaction.response.edit_message(embed=make_embed(new_page), view=CatalogView(new_page))
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.gray, custom_id="next_btn")
+    async def next_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        new_page = (self.page + 1) % len(PAGES)
+        await interaction.response.edit_message(embed=make_embed(new_page), view=CatalogView(new_page))
+    @discord.ui.button(label="1/4", style=discord.ButtonStyle.gray, custom_id="page_btn", disabled=True)
+    async def page_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        pass
 
-# --- COMMAND /product : KATALOG ---
+def make_embed(page_idx):
+    p = PAGES[page_idx]
+    embed = discord.Embed(title="Mipi Store CATALOG", description=f"**{p['title']}**\n\n**Kategori :** {p['kategori']}\n**⚡ Rate Kategori :** {p['rate']}\n\n**List Product :**\n{p['list']}", color=0xFF69B4)
+    embed.set_footer(text=f"Mipi Store • Halaman {page_idx+1}/{len(PAGES)} • Pembayaran QRIS")
+    return embed
+
 @bot.tree.command(name="product", description="Lihat katalog produk Mipi Store")
 async def product(interaction: discord.Interaction):
-    embed = discord.Embed(title="Mipi Store CATALOG", description="**💖 JASA BUAT BOT DC - MIPI STORE**\n\nPilih produk di bawah untuk liat detail & order!\n\n**Paket Tersedia:**\n💎 SIMPLE - Rp 25.000\n🛡️ MEDIUM - Rp 50.000\n⭐ FULL - Rp 100.000 (BEST SELLER)\n👑 PREMIUM - Rp 150.000\n🔥 SULTAN - Rp 250.000\n🧊 GOD - Rp 500.000\n🎵 BOT MUSIC - Rp 30.000", color=0xFF69B4)
-    embed.set_footer(text="Mipi Store • Pembayaran QRIS")
-    await interaction.response.send_message(embed=embed, view=ProductView())
+    await interaction.response.send_message(embed=make_embed(0), view=CatalogView(0))
 
-# --- COMMAND /ticket : PANEL TICKET ---
 class TicketView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -144,19 +144,14 @@ class TicketView(discord.ui.View):
         channel = await create_ticket(interaction, "Custom / Tanya Dulu")
         await interaction.response.send_message(f"Ticket kamu dibuat! 👉 {channel.mention}", ephemeral=True)
 
-@bot.tree.command(name="ticket", description="Kirim panel open ticket jual bot")
+@bot.tree.command(name="ticket", description="Kirim panel open ticket")
 async def ticket(interaction: discord.Interaction):
     embed = discord.Embed(title="MIPI STORE - Jasa Buat Bot 🤖", description="**🌸 TARIF JASA BUAT BOT DC - MIPI STORE**\n\n**List Bot Bisa Dibuat:**\n> 🤖 Bot Store / Jualan\n> 🎫 Bot Ticket\n> 👋 Bot Welcome / Level\n> 🎵 Bot Music\n> 🛡️ Bot Moderation\n> ✨ Custom Request\n\n**Cara Order:**\n1. Ke channel `#🛍️・product` pilih produk\n2. Atau pencet tombol **Open Ticket** di bawah\n3. Isi Format Order\n\n*Pembayaran QRIS 💖*", color=0xFF69B4)
     await interaction.response.send_message(embed=embed, view=TicketView())
 
-@bot.tree.command(name="pricelist", description="Lihat pricelist jasa buat bot")
+@bot.tree.command(name="pricelist", description="Lihat pricelist")
 async def pricelist(interaction: discord.Interaction):
-    embed = discord.Embed(title="💖 TARIF JASA BUAT BOT DC - MIPI STORE", description="**💎 SIMPLE - Rp 25.000**\n> Ticket + QRIS + Status + Close\n\n**🛡️ MEDIUM - Rp 50.000**\n> Simple + Saldo + Leaderboard + Vouch + Giveaway\n\n**⭐ FULL - Rp 100.000 | BEST SELLER**\n> Medium + Promo + Anti Jualan + History + 7 Produk + Custom + Di ajarin Sampai Bisa\n\n**👑 PREMIUM - Rp 150.000**\n> Semua Full + 7 Fitur Custom + Setup Hosting + Support Lifetime + Revisi Unlimited\n\n**🔥 SULTAN - Rp 250.000**\n> Semua Premium + 5 Fitur Custom + 2 Bot Sekaligus + Logo Banner Gratis + Private Support VIP + Garansi Seumur Hidup\n\n**🧊 GOD - Rp 500.000**\n> Semua Sultan + Unlimited Bot + Unlimited Fitur + Source Code Bot + Setup Server Full + Di ajarin Jualan + Partner MIPI STORE\n\n*Pembayaran QRIS 💖*", color=0xFF69B4)
-    await interaction.response.send_message(embed=embed)
-
-@bot.tree.command(name="help", description="Lihat semua command bot")
-async def help_cmd(interaction: discord.Interaction):
-    embed = discord.Embed(title="📖 HELP - MIPI STORE", description="`/product` - Lihat katalog & order\n`/ticket` - Buka panel open ticket\n`/pricelist` - Lihat harga bot\n`/help` - Buka menu ini", color=0x00FFFF)
+    embed = discord.Embed(title="💖 TARIF JASA BUAT BOT DC - MIPI STORE", description="**💎 SIMPLE - Rp 25.000**\n> Ticket + QRIS + Status + Close\n\n**🛡️ MEDIUM - Rp 50.000**\n> Simple + Saldo + Leaderboard + Vouch + Giveaway\n\n**⭐ FULL - Rp 100.000 | BEST SELLER**\n> Medium + Promo + Anti Jualan + History + 7 Produk + Custom + Diajarin Sampai Bisa\n\n**👑 PREMIUM - Rp 150.000**\n> Semua Full + 7 Fitur Custom + Setup Hosting + Support Lifetime + Revisi Unlimited\n\n**🔥 SULTAN - Rp 250.000**\n> Semua Premium + 5 Fitur Custom + 2 Bot Sekaligus + Logo Banner Gratis + Private Support VIP + Garansi Seumur Hidup\n\n**🧊 GOD - Rp 500.000**\n> Semua Sultan + Unlimited Bot + Unlimited Fitur + Source Code Bot + Setup Server Full + Di ajarin Jualan + Partner MIPI STORE\n\n*Pembayaran QRIS 💖*", color=0xFF69B4)
     await interaction.response.send_message(embed=embed)
 
 bot.run(os.getenv("DISCORD_TOKEN"))
