@@ -102,7 +102,7 @@ class OrderButton(discord.ui.View):
 def make_embed(cat_key):
     c = CATEGORIES[cat_key]
     embed = discord.Embed(title="Mipi Store CATALOG", description=f"**{c['title']}**\n\n**Kategori :** {c['kategori']}\n**⚡ Rate Kategori :** {c['rate']}\n\n**List Product :**\n{c['list']}", color=0xFF69B4)
-    embed.set_footer(text="Mipi Store • Pembayaran QRIS • Robux Via Username ONLY")
+    embed.set_footer(text="Mipi Store")
     return embed
 
 class CategorySelect(discord.ui.Select):
@@ -111,7 +111,8 @@ class CategorySelect(discord.ui.Select):
             discord.SelectOption(label="🤖 Jasa Buat Bot", description="Lihat produk di kategori ini", value="bot", emoji="🤖"),
             discord.SelectOption(label="💎 Robux Via Username", description="Lihat produk di kategori ini", value="robux", emoji="💎"),
         ]
-        super().__init__(placeholder="💎 Pilih Kategori Produk...", options=options, custom_id="cat_select")
+        placeholder = "🤖 Jasa Buat Bot" if current == "bot" else "💎 Robux Via Username"
+        super().__init__(placeholder=placeholder, options=options, custom_id="cat_select", row=0)
     async def callback(self, interaction: discord.Interaction):
         cat_key = self.values[0]
         await interaction.response.edit_message(embed=make_embed(cat_key), view=CatalogView(cat_key))
@@ -120,7 +121,7 @@ class ProductSelect(discord.ui.Select):
     def __init__(self, cat_key):
         c = CATEGORIES[cat_key]
         options = [discord.SelectOption(label=label, value=val) for label, val in c["products"]]
-        super().__init__(placeholder="🛒 Pilih Produk untuk Order / Beli...", options=options, custom_id="prod_select")
+        super().__init__(placeholder="🛒 Pilih Produk untuk Order / Beli...", options=options, custom_id="prod_select", row=1)
     async def callback(self, interaction: discord.Interaction):
         key = self.values[0]
         nama, harga, desc = PRODUCTS_DETAIL[key]
@@ -133,13 +134,16 @@ class CatalogView(discord.ui.View):
         self.cat_key = cat_key
         self.add_item(CategorySelect(cat_key))
         self.add_item(ProductSelect(cat_key))
-    @discord.ui.button(label="PREV", style=discord.ButtonStyle.gray, custom_id="prev_btn")
+    @discord.ui.button(label="PREV", style=discord.ButtonStyle.gray, custom_id="prev_btn", row=2)
     async def prev_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         keys = list(CATEGORIES.keys())
         idx = keys.index(self.cat_key)
         new_key = keys[(idx - 1) % len(keys)]
         await interaction.response.edit_message(embed=make_embed(new_key), view=CatalogView(new_key))
-    @discord.ui.button(label="Next", style=discord.ButtonStyle.gray, custom_id="next_btn")
+    @discord.ui.button(label="1/2", style=discord.ButtonStyle.gray, custom_id="page_btn", disabled=True, row=2)
+    async def page_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        pass
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.gray, custom_id="next_btn", row=2)
     async def next_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         keys = list(CATEGORIES.keys())
         idx = keys.index(self.cat_key)
@@ -149,6 +153,19 @@ class CatalogView(discord.ui.View):
 @bot.tree.command(name="product", description="Lihat katalog produk Mipi Store")
 async def product(interaction: discord.Interaction):
     await interaction.response.send_message(embed=make_embed("bot"), view=CatalogView("bot"))
+
+class TicketView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+    @discord.ui.button(label="🎫 Open Ticket", style=discord.ButtonStyle.blurple, custom_id="open_ticket")
+    async def open_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        channel = await create_ticket(interaction, "Custom / Tanya Dulu")
+        await interaction.response.send_message(f"Ticket kamu dibuat! 👉 {channel.mention}", ephemeral=True)
+
+@bot.tree.command(name="ticket", description="Kirim panel open ticket")
+async def ticket(interaction: discord.Interaction):
+    embed = discord.Embed(title="MIPI STORE - Jasa Buat Bot 🤖", description="**🌸 MIPI STORE - OPEN!**\n\n**List Bisa Dibuat / Dibeli:**\n> 🤖 Jasa Buat Bot - Mulai 25K\n> 💎 Robux Via Username - 500 = 76K / 1000 = 152K\n> 🎵 Bot Music - 30K\n\n**Cara Order:**\n1. Ke channel `#🛍️・product` pilih produk\n2. Atau pencet tombol **Open Ticket** di bawah\n3. Isi Format Order\n\n*Pembayaran QRIS 💖*", color=0xFF69B4)
+    await interaction.response.send_message(embed=embed, view=TicketView())
 
 @bot.tree.command(name="pricelist", description="Lihat pricelist")
 async def pricelist(interaction: discord.Interaction):
