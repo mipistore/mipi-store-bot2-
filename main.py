@@ -19,10 +19,9 @@ async def on_ready():
 
 CATEGORIES = {
     "bot": {
-        "title": "🤖 Jasa Buat Bot",
         "kategori": "Jasa Buat Bot",
         "rate": "Mulai Rp 25.000",
-        "list": "• SIMPLE - Rp 25.000\n• MEDIUM - Rp 50.000\n• FULL - Rp 100.000\n• PREMIUM - Rp 150.000\n• SULTAN - Rp 250.000\n• GOD - Rp 500.000\n• BOT MUSIC - Rp 30.000",
+        "list": "• SIMPLE\n  └ 🏷️ Rp 25.000\n• MEDIUM\n  └ 🏷️ Rp 50.000\n• FULL\n  └ 🏷️ Rp 100.000\n• PREMIUM\n  └ 🏷️ Rp 150.000\n• SULTAN\n  └ 🏷️ Rp 250.000\n• GOD\n  └ 🏷️ Rp 500.000\n• BOT MUSIC\n  └ 🏷️ Rp 30.000",
         "products": [
             ("💎 SIMPLE - Rp 25.000", "simple"),
             ("🛡️ MEDIUM - Rp 50.000", "medium"),
@@ -34,10 +33,9 @@ CATEGORIES = {
         ]
     },
     "robux": {
-        "title": "💎 Robux Via Username",
         "kategori": "Robux Via Username",
         "rate": "Rp 152 / 1 R$",
-        "list": "• 500 Robux - Rp 76.000\n• 1000 Robux - Rp 152.000\n\nMetode : Via Username ONLY!",
+        "list": "• 500 Robux\n  └ 🏷️ Rp 76.000\n• 1000 Robux\n  └ 🏷️ Rp 152.000",
         "products": [
             ("💎 500 Robux - Rp 76.000", "robux500"),
             ("💎 1000 Robux - Rp 152.000", "robux1000"),
@@ -101,8 +99,8 @@ class OrderButton(discord.ui.View):
 
 def make_embed(cat_key):
     c = CATEGORIES[cat_key]
-    embed = discord.Embed(title="Mipi Store CATALOG", description=f"**{c['title']}**\n\n**Kategori :** {c['kategori']}\n**⚡ Rate Kategori :** {c['rate']}\n\n**List Product :**\n{c['list']}", color=0xFF69B4)
-    embed.set_footer(text="Mipi Store")
+    # FIX ALA ISSA: Ga ada judul dobel, ga ada footer, Rate pake kotak ` `
+    embed = discord.Embed(title="Mipi Store CATALOG", description=f"**Kategori :** {c['kategori']}\n**⚡ Rate Kategori :** `{c['rate']}`\n\n**List Product :**\n{c['list']}", color=0x2B2D31)
     return embed
 
 class CategorySelect(discord.ui.Select):
@@ -125,7 +123,7 @@ class ProductSelect(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         key = self.values[0]
         nama, harga, desc = PRODUCTS_DETAIL[key]
-        embed = discord.Embed(title="Mipi Store CATALOG", description=f"**{nama}**\n\n**Harga :** {harga}\n\n**Detail :**\n• {desc}", color=0xFF69B4)
+        embed = discord.Embed(title="Mipi Store CATALOG", description=f"**{nama}**\n\n**Harga :** `{harga}`\n\n**Detail :**\n• {desc}", color=0x2B2D31)
         await interaction.response.send_message(embed=embed, view=OrderButton(key), ephemeral=True)
 
 class CatalogView(discord.ui.View):
@@ -164,12 +162,12 @@ class TicketView(discord.ui.View):
 
 @bot.tree.command(name="ticket", description="Kirim panel open ticket")
 async def ticket(interaction: discord.Interaction):
-    embed = discord.Embed(title="MIPI STORE - Jasa Buat Bot 🤖", description="**🌸 MIPI STORE - OPEN!**\n\n**List Bisa Dibuat / Dibeli:**\n> 🤖 Jasa Buat Bot - Mulai 25K\n> 💎 Robux Via Username - 500 = 76K / 1000 = 152K\n> 🎵 Bot Music - 30K\n\n**Cara Order:**\n1. Ke channel `#🛍️・product` pilih produk\n2. Atau pencet tombol **Open Ticket** di bawah\n3. Isi Format Order\n\n*Pembayaran QRIS 💖*", color=0xFF69B4)
+    embed = discord.Embed(title="MIPI STORE - OPEN!", description="**List Bisa Dibuat / Dibeli:**\n> 🤖 Jasa Buat Bot - Mulai 25K\n> 💎 Robux Via Username - 500 = 76K / 1000 = 152K\n\n**Cara Order:**\n1. Ke channel `#🛍️・product` pilih produk\n2. Atau pencet tombol **Open Ticket** di bawah\n\n*Pembayaran QRIS 💖*", color=0x2B2D31)
     await interaction.response.send_message(embed=embed, view=TicketView())
 
 @bot.tree.command(name="pricelist", description="Lihat pricelist")
 async def pricelist(interaction: discord.Interaction):
-    embed = discord.Embed(title="💖 PRICELIST - MIPI STORE", description="**🤖 JASA BUAT BOT**\n> SIMPLE - 25K\n> MEDIUM - 50K\n> FULL - 100K\n> PREMIUM - 150K\n> SULTAN - 250K\n> GOD - 500K\n> BOT MUSIC - 30K\n\n**💎 ROBUX VIA USERNAME ONLY**\n> 500 Robux - 76K\n> 1000 Robux - 152K\n\n*Pembayaran QRIS 💖*", color=0xFF69B4)
+    embed = discord.Embed(title="💖 PRICELIST - MIPI STORE", description="**🤖 JASA BUAT BOT**\n> SIMPLE - 25K\n> MEDIUM - 50K\n> FULL - 100K\n> PREMIUM - 150K\n> SULTAN - 250K\n> GOD - 500K\n> BOT MUSIC - 30K\n\n**💎 ROBUX VIA USERNAME ONLY**\n> 500 Robux - 76K\n> 1000 Robux - 152K\n\n*Pembayaran QRIS 💖*", color=0x2B2D31)
     await interaction.response.send_message(embed=embed)
 
 bot.run(os.getenv("DISCORD_TOKEN"))
