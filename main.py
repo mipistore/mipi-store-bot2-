@@ -51,11 +51,12 @@ PRODUCTS_DETAIL = {
     "sultan": ("🔥 SULTAN", "Rp 250.000", "Semua Premium + 5 Fitur Custom + 2 Bot + Banner Gratis + VIP"),
     "god": ("🧊 GOD", "Rp 500.000", "Semua Sultan + Unlimited + Source Code + Partner MIPI"),
     "music": ("🎵 BOT MUSIC", "Rp 30.000", "Music 24/7 + Play / Skip / Queue + Spotify & Youtube"),
-    "robux500": ("💎 500 ROBUX", "Rp 76.000", "Via Username ONLY\nRate Rp 152 / 1 R$\nPembayaran QRIS"),
-    "robux1000": ("💎 1000 ROBUX", "Rp 152.000", "Via Username ONLY\nRate Rp 152 / 1 R$\nPembayaran QRIS"),
+    "robux500": ("💎 500 ROBUX", "Rp 76.000", "Via Username ONLY"),
+    "robux1000": ("💎 1000 ROBUX", "Rp 152.000", "Via Username ONLY"),
 }
 
-async def create_ticket(interaction, paket_nama=""):
+# --- TICKET + AUTO ISI ---
+async def create_ticket_filled(interaction, paket_nama, harga, filled_text):
     guild = interaction.guild
     category = None
     for cat in guild.categories:
@@ -71,11 +72,7 @@ async def create_ticket(interaction, paket_nama=""):
         guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_messages=True),
     }
     channel = await guild.create_text_channel(name=f"ticket-{interaction.user.name}", category=category, overwrites=overwrites)
-    if "ROBUX" in paket_nama:
-        desc = f"Halo {interaction.user.mention}!\n\nKamu order **{paket_nama}** 💖\n\n**FORMAT ORDER ROBUX VIA USERNAME:**\n```\nNama :\nUsername Roblox :\nJumlah : {paket_nama}\nMetode : Via Username\nBukti TF :\n```\nPembayaran via **QRIS** ya!"
-    else:
-        desc = f"Halo {interaction.user.mention}!\n\nKamu order **{paket_nama}** 💖\n\n**FORMAT ORDER BOT:**\n```\nNama :\nJenis Bot :\nPaket : {paket_nama}\nFitur Yang Mau :\nBudget :\nDeadline :\n```\nPembayaran via **QRIS** ya!"
-    embed = discord.Embed(title="🎫 TICKET MIPI STORE", description=desc, color=0xFF69B4)
+    embed = discord.Embed(title="🎫 TICKET MIPI STORE", description=f"Halo {interaction.user.mention}!\n\nKamu order **{paket_nama}** 💖\n\n{filled_text}\n\nPembayaran via **QRIS** ya! Kirim bukti TF di sini 👇", color=0xFF69B4)
     await channel.send(embed=embed, view=CloseTicketView())
     return channel
 
@@ -87,15 +84,51 @@ class CloseTicketView(discord.ui.View):
         await interaction.response.send_message("Ticket akan ditutup dalam 5 detik...")
         await interaction.channel.delete()
 
+# --- MODAL BOT: LANGSUNG NGISI ---
+class OrderBotModal(discord.ui.Modal):
+    def __init__(self, key):
+        super().__init__(title="Order Bot - Isi Data")
+        self.key = key
+        nama, harga, desc = PRODUCTS_DETAIL[key]
+        self.nama_input = discord.ui.TextInput(label="Nama Kamu", placeholder="Contoh: Rafix", required=True, max_length=30)
+        self.jenis_input = discord.ui.TextInput(label="Jenis Bot / Fitur Yang Mau", placeholder="Contoh: Bot Store / Music 24/7", required=True, style=discord.TextStyle.paragraph)
+        self.deadline_input = discord.ui.TextInput(label="Deadline", placeholder="Contoh: Besok / 3 Hari", required=False)
+        self.add_item(self.nama_input)
+        self.add_item(self.jenis_input)
+        self.add_item(self.deadline_input)
+    async def on_submit(self, interaction: discord.Interaction):
+        nama, harga, desc = PRODUCTS_DETAIL[self.key]
+        # AUTO ISI: Paket & Budget langsung keisi dari produk yang dipencet!
+        filled = f"**FORMAT ORDER BOT (UDAH KEISI ✅):**\n```\nNama : {self.nama_input.value}\nJenis Bot : {self.jenis_input.value}\nPaket : {nama} - {harga}\nFitur Yang Mau : {self.jenis_input.value}\nBudget : {harga}\nDeadline : {self.deadline_input.value or '-'}\n```"
+        channel = await create_ticket_filled(interaction, f"{nama} - {harga}", harga, filled)
+        await interaction.response.send_message(f"Order kamu dibuat & udah keisi! 👉 {channel.mention}", ephemeral=True)
+
+# --- MODAL ROBUX: LANGSUNG NGISI ---
+class OrderRobuxModal(discord.ui.Modal):
+    def __init__(self, key):
+        super().__init__(title="Order Robux - Via Username")
+        self.key = key
+        self.nama_input = discord.ui.TextInput(label="Nama Kamu", placeholder="Contoh: Rafix", required=True, max_length=30)
+        self.user_input = discord.ui.TextInput(label="Username Roblox", placeholder="Contoh: RafixMP", required=True, max_length=30)
+        self.add_item(self.nama_input)
+        self.add_item(self.user_input)
+    async def on_submit(self, interaction: discord.Interaction):
+        nama, harga, desc = PRODUCTS_DETAIL[self.key]
+        filled = f"**FORMAT ORDER ROBUX VIA USERNAME (UDAH KEISI ✅):**\n```\nNama : {self.nama_input.value}\nUsername Roblox : {self.user_input.value}\nJumlah : {nama} - {harga}\nMetode : Via Username ONLY\nBukti TF : -\n```"
+        channel = await create_ticket_filled(interaction, f"{nama} - {harga}", harga, filled)
+        await interaction.response.send_message(f"Order kamu dibuat & udah keisi! 👉 {channel.mention}", ephemeral=True)
+
 class OrderButton(discord.ui.View):
     def __init__(self, key):
         super().__init__(timeout=None)
         self.key = key
     @discord.ui.button(label="🛒 Order / Beli Sekarang", style=discord.ButtonStyle.green, custom_id="order_now")
     async def order_now(self, interaction: discord.Interaction, button: discord.ui.Button):
-        nama, harga, desc = PRODUCTS_DETAIL[self.key]
-        channel = await create_ticket(interaction, f"{nama} - {harga}")
-        await interaction.response.send_message(f"Order kamu dibuat! 👉 {channel.mention}", ephemeral=True)
+        # Kalo Robux -> Modal Robux, Kalo Bot -> Modal Bot
+        if "robux" in self.key:
+            await interaction.response.send_modal(OrderRobuxModal(self.key))
+        else:
+            await interaction.response.send_modal(OrderBotModal(self.key))
 
 class CategorySelect(discord.ui.Select):
     def __init__(self, current="bot"):
@@ -120,7 +153,6 @@ class ProductSelect(discord.ui.Select):
         embed = discord.Embed(title="Mipi Store CATALOG", description=f"**{nama}**\n\n**Harga :** `{harga}`\n\n**Detail :**\n• {desc}", color=0x2B2D31)
         await interaction.response.send_message(embed=embed, view=OrderButton(key), ephemeral=True)
 
-# INI KUNCINYA - COMPONENTS V2 BIAR TOMBOL NYATU KAYA ISSA
 class CatalogLayout(discord.ui.LayoutView):
     def __init__(self, cat_key="bot"):
         super().__init__(timeout=None)
@@ -129,39 +161,32 @@ class CatalogLayout(discord.ui.LayoutView):
         keys = list(CATEGORIES.keys())
         idx = keys.index(cat_key)
         page_text = f"{idx+1}/{len(keys)}"
-
         container = discord.ui.Container()
-        # Judul
         container.add_item(discord.ui.TextDisplay("## Mipi Store CATALOG"))
-        # Dropdown Kategori - DI DALEM KOTAK
         container.add_item(discord.ui.ActionRow(CategorySelect(cat_key)))
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
-        # Isi Kategori / Rate / List
         container.add_item(discord.ui.TextDisplay(f"**Kategori :** {c['kategori']}\n**⚡ Rate Kategori :** `{c['rate']}`\n\n**List Product :**\n{c['list']}"))
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
-        # Dropdown Produk - DI DALEM KOTAK
         container.add_item(discord.ui.ActionRow(ProductSelect(cat_key)))
-        # Tombol PREV / PAGE / Next - DI DALEM KOTAK, 1 BARIS
         row = discord.ui.ActionRow()
-        row.add_item(discord.ui.Button(label="PREV", style=discord.ButtonStyle.secondary, custom_id=f"prev_{cat_key}"))
-        row.add_item(discord.ui.Button(label=page_text, style=discord.ButtonStyle.secondary, custom_id="page_btn", disabled=True))
-        row.add_item(discord.ui.Button(label="Next", style=discord.ButtonStyle.secondary, custom_id=f"next_{cat_key}"))
-        # Kasih callback manual buat tombol di ActionRow
-        for item in row.children:
-            if item.custom_id and item.custom_id.startswith("prev_"):
-                async def prev_cb(interaction: discord.Interaction, _cat=cat_key):
-                    keys2 = list(CATEGORIES.keys())
-                    idx2 = keys2.index(_cat)
-                    new_key = keys2[(idx2 - 1) % len(keys2)]
-                    await interaction.response.edit_message(view=CatalogLayout(new_key))
-                item.callback = prev_cb
-            if item.custom_id and item.custom_id.startswith("next_"):
-                async def next_cb(interaction: discord.Interaction, _cat=cat_key):
-                    keys2 = list(CATEGORIES.keys())
-                    idx2 = keys2.index(_cat)
-                    new_key = keys2[(idx2 + 1) % len(keys2)]
-                    await interaction.response.edit_message(view=CatalogLayout(new_key))
-                item.callback = next_cb
+        prev_btn = discord.ui.Button(label="PREV", style=discord.ButtonStyle.secondary, custom_id=f"prev_{cat_key}")
+        page_btn = discord.ui.Button(label=page_text, style=discord.ButtonStyle.secondary, custom_id="page_btn", disabled=True)
+        next_btn = discord.ui.Button(label="Next", style=discord.ButtonStyle.secondary, custom_id=f"next_{cat_key}")
+        async def prev_cb(interaction: discord.Interaction, _cat=cat_key):
+            keys2 = list(CATEGORIES.keys())
+            idx2 = keys2.index(_cat)
+            new_key = keys2[(idx2 - 1) % len(keys2)]
+            await interaction.response.edit_message(view=CatalogLayout(new_key))
+        async def next_cb(interaction: discord.Interaction, _cat=cat_key):
+            keys2 = list(CATEGORIES.keys())
+            idx2 = keys2.index(_cat)
+            new_key = keys2[(idx2 + 1) % len(keys2)]
+            await interaction.response.edit_message(view=CatalogLayout(new_key))
+        prev_btn.callback = prev_cb
+        next_btn.callback = next_cb
+        row.add_item(prev_btn)
+        row.add_item(page_btn)
+        row.add_item(next_btn)
         container.add_item(row)
         self.add_item(container)
 
@@ -174,12 +199,11 @@ class TicketView(discord.ui.View):
         super().__init__(timeout=None)
     @discord.ui.button(label="🎫 Open Ticket", style=discord.ButtonStyle.blurple, custom_id="open_ticket")
     async def open_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        channel = await create_ticket(interaction, "Custom / Tanya Dulu")
-        await interaction.response.send_message(f"Ticket kamu dibuat! 👉 {channel.mention}", ephemeral=True)
+        await interaction.response.send_message("Pilih produk di #🛍️・product dulu ya!", ephemeral=True)
 
 @bot.tree.command(name="ticket", description="Kirim panel open ticket")
 async def ticket(interaction: discord.Interaction):
-    embed = discord.Embed(title="MIPI STORE - OPEN!", description="**List Bisa Dibuat / Dibeli:**\n> 🤖 Jasa Buat Bot - Mulai 25K\n> 💎 Robux Via Username - 500 = 76K / 1000 = 152K\n\n**Cara Order:**\n1. Ke channel `#🛍️・product` pilih produk\n2. Atau pencet tombol **Open Ticket** di bawah\n\n*Pembayaran QRIS 💖*", color=0x2B2D31)
+    embed = discord.Embed(title="MIPI STORE - OPEN!", description="**List Bisa Dibuat / Dibeli:**\n> 🤖 Jasa Buat Bot - Mulai 25K\n> 💎 Robux Via Username - 500 = 76K / 1000 = 152K\n\n**Cara Order:**\n1. Ke channel `#🛍️・product` pilih produk\n2. Pencet Order -> Isi Form -> Ticket langsung keisi!\n\n*Pembayaran QRIS 💖*", color=0x2B2D31)
     await interaction.response.send_message(embed=embed, view=TicketView())
 
 @bot.tree.command(name="pricelist", description="Lihat pricelist")
