@@ -1,12 +1,40 @@
 import discord
 from discord.ext import commands
 import os
+import json
+from datetime import datetime
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 intents.guilds = True
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+DATA_FILE = "mipi_data.json"
+
+# --- ID CHANNEL ASLI KAMU ---
+VOUCH_CHANNEL_ID = 1571783490297528420
+ORDER_LOGS_CHANNEL_ID = 1571783908058730547
+TESTIMONI_CHANNEL_ID = 1571784387438055515
+
+def load_data():
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r") as f:
+                return json.load(f)
+        except:
+            pass
+    return {"order_count": 0, "reviews": [], "orders": []}
+
+def save_data(data):
+    try:
+        with open(DATA_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+    except:
+        pass
+
+DATA = load_data()
+PENDING = {}
 
 @bot.event
 async def on_ready():
@@ -55,8 +83,87 @@ PRODUCTS_DETAIL = {
     "robux1000": ("💎 1000 ROBUX", "Rp 152.000", "Via Username ONLY"),
 }
 
-# --- TICKET + AUTO ISI + QRIS ---
-async def create_ticket_filled(interaction, paket_nama, harga, filled_text):
+def find_channel(guild, name_part):
+    if "vouch" in name_part.lower():
+        ch = guild.get_channel(VOUCH_CHANNEL_ID)
+        if ch:
+            return ch
+    if "order-logs" in name_part.lower():
+        ch = guild.get_channel(ORDER_LOGS_CHANNEL_ID)
+        if ch:
+            return ch
+    if "testimoni" in name_part.lower():
+        ch = guild.get_channel(TESTIMONI_CHANNEL_ID)
+        if ch:
+            return ch
+    for ch in guild.text_channels:
+        if name_part in ch.name.lower():
+            return ch
+    return None
+
+def get_vouch_embed(review):
+    embed = discord.Embed(title="⭐ TESTIMONI PEMBELI — Mipi Store", color=0xFFD700)
+    embed.add_field(name="👤 Pembeli:", value=review["customer_mention"], inline=False)
+    embed.add_field(name="📦 Produk:", value=review["produk"], inline=False)
+    embed.add_field(name="⭐ Rating:", value=f"{'⭐' * review['rating']} ({review['rating']}/5)", inline=False)
+    embed.add_field(name="📅 Tanggal:", value=review["tanggal"], inline=False)
+    embed.add_field(name="💬 Ulasan & Review:", value=f"\"{review['ulasan']}\"", inline=False)
+    if review.get("avatar"):
+        embed.set_thumbnail(url=review["avatar"])
+    return embed
+
+def get_order_log_embed(order):
+    embed = discord.Embed(title=f"🧾 ORDER LOG — {order['order_id']}", color=0x2B2D31)
+    embed.add_field(name="👤 Customer:", value=order["customer_mention"], inline=False)
+    embed.add_field(name="🎮 Roblox User:", value=order.get("roblox_user", "-"), inline=False)
+    embed.add_field(name="📦 Produk:", value=order["produk"], inline=False)
+    embed.add_field(name="📦 Jumlah:", value=order.get("jumlah", "1 Unit"), inline=False)
+    embed.add_field(name="💰 Total Bayar:", value=order["harga"], inline=False)
+    embed.add_field(name="💳 Metode:", value="QRIS (All Payment)", inline=False)
+    embed.add_field(name="📅 Tanggal:", value=order["tanggal"], inline=False)
+    embed.add_field(name="📊 Status:", value="🟢 DONE / PAID", inline=False)
+    if order.get("avatar"):
+        embed.set_thumbnail(url=order["avatar"])
+    return embed
+
+def get_testimoni_embed():
+    reviews = DATA.get("reviews", [])
+    total = len(reviews)
+    avg = sum(r["rating"] for r in reviews) / total if total > 0 else 0.0
+    counts = {5:0, 4:0, 3:0, 2:0, 1:0}
+    for r in reviews:
+        counts[r["rating"]] = counts.get(r["rating"], 0) + 1
+    stars = "⭐" * round(avg) if avg > 0 else "⭐"
+    desc = f"Rangkuman kepuasan dan ulasan pelanggan dari transaksi terverifikasi di Mipi Store:\n\n"
+    desc += f"📊 **STATISTIK REPUTASI TOKO:**\n"
+    desc += f"⭐ **Rating Kepuasan:** {avg:.1f} / 5.0 {stars}\n"
+    desc += f"⭐ **Total Ulasan Selesai:** {total} Pembeli\n\n"
+    desc += f"📝 **RINCIAN RATING BINTANG:**\n"
+    desc += f"⭐⭐⭐⭐⭐ (5 Bintang): {counts[5]} ulasan\n"
+    desc += f"⭐⭐⭐⭐ (4 Bintang): {counts[4]} ulasan\n"
+    desc += f"⭐⭐⭐ (3 Bintang): {counts[3]} ulasan\n"
+    desc += f"⭐⭐ (2 Bintang): {counts[2]} ulasan\n"
+    desc += f"⭐ (1 Bintang): {counts[1]} ulasan\n\n"
+    desc += f"🔒 *Reputasi Terverifikasi Otomatis: Setiap ulasan di bawah berasal langsung dari tiket pesanan yang telah selesai (DONE).*"
+    embed = discord.Embed(title="⭐ REPUTASI & STATISTIK TOKO — Mipi Store", description=desc, color=0xFFD700)
+    return embed
+
+async def update_testimoni_channel(guild):
+    ch = find_channel(guild, "testimoni")
+    if not ch:
+        return
+    try:
+        async for msg in ch.history(limit=20):
+            if msg.author == guild.me:
+                try:
+                    await msg.delete()
+                except:
+                    pass
+    except:
+        pass
+    await ch.send(embed=get_testimoni_embed())
+
+async def create_ticket_filled(interaction, paket_nama, harga, filled_text, extra_data=None):
     guild = interaction.guild
     category = None
     for cat in guild.categories:
@@ -74,23 +181,112 @@ async def create_ticket_filled(interaction, paket_nama, harga, filled_text):
     channel = await guild.create_text_channel(name=f"ticket-{interaction.user.name}", category=category, overwrites=overwrites)
     embed = discord.Embed(title="🎫 TICKET MIPI STORE", description=f"Halo {interaction.user.mention}!\n\nKamu order **{paket_nama}** 💖\n\n{filled_text}\n\nPembayaran via **QRIS** ya! Scan di bawah ini, terus kirim bukti TF di sini 👇", color=0xFF69B4)
     embed.set_image(url="https://raw.githubusercontent.com/mipistore/mipi-store/main/IMG_5210.jpeg")
-    await channel.send(embed=embed, view=CloseTicketView())
+    await channel.send(embed=embed, view=TicketActionView())
+    PENDING[channel.id] = {
+        "customer_id": interaction.user.id,
+        "customer_mention": interaction.user.mention,
+        "customer_name": str(interaction.user),
+        "avatar": str(interaction.user.display_avatar.url) if interaction.user.display_avatar else None,
+        "produk": paket_nama,
+        "harga": harga,
+        "roblox_user": (extra_data or {}).get("roblox_user", "-"),
+        "nama": (extra_data or {}).get("nama", "-"),
+        "jumlah": (extra_data or {}).get("jumlah", "1 Unit"),
+    }
     return channel
 
-class CloseTicketView(discord.ui.View):
+class TicketActionView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
+    @discord.ui.button(label="✅ Tandai Selesai / DONE", style=discord.ButtonStyle.green, custom_id="ticket_done")
+    async def ticket_done(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(ReviewModal(interaction.channel.id))
     @discord.ui.button(label="🔒 Close Ticket", style=discord.ButtonStyle.red, custom_id="close_ticket")
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("Ticket akan ditutup dalam 5 detik...")
         await interaction.channel.delete()
 
-# --- MODAL BOT - UDAH DIPISAH BIAR GA DOBEL ---
+class CloseTicketView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+    @discord.ui.button(label="🔒 Close Ticket", style=discord.ButtonStyle.red, custom_id="close_ticket2")
+    async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("Ticket akan ditutup dalam 5 detik...")
+        await interaction.channel.delete()
+
+class ReviewModal(discord.ui.Modal):
+    def __init__(self, channel_id):
+        super().__init__(title="Kasih Rating & Ulasan")
+        self.channel_id = channel_id
+        self.rating_input = discord.ui.TextInput(label="Rating (1-5)", placeholder="Contoh: 5", required=True, max_length=1)
+        self.ulasan_input = discord.ui.TextInput(label="Ulasan / Review", placeholder="Contoh: great store, fast respon!", required=True, style=discord.TextStyle.paragraph)
+        self.add_item(self.rating_input)
+        self.add_item(self.ulasan_input)
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            rating = int(self.rating_input.value.strip())
+            if rating < 1: rating = 1
+            if rating > 5: rating = 5
+        except:
+            rating = 5
+        ulasan = self.ulasan_input.value.strip()
+        tanggal = datetime.now().strftime("%d %b %Y").upper()
+        data = PENDING.get(self.channel_id, {})
+        customer_mention = data.get("customer_mention", interaction.user.mention)
+        avatar = data.get("avatar", str(interaction.user.display_avatar.url))
+        produk = data.get("produk", "Produk Mipi Store")
+        harga = data.get("harga", "-")
+        roblox_user = data.get("roblox_user", "-")
+        jumlah = data.get("jumlah", "1 Unit")
+        DATA["order_count"] = DATA.get("order_count", 0) + 1
+        order_id = f"ORDER-{DATA['order_count']:06d}"
+        order = {
+            "order_id": order_id,
+            "customer_mention": customer_mention,
+            "avatar": avatar,
+            "produk": produk,
+            "harga": harga,
+            "roblox_user": roblox_user,
+            "jumlah": jumlah,
+            "tanggal": tanggal,
+        }
+        review = {
+            "customer_mention": customer_mention,
+            "avatar": avatar,
+            "produk": produk,
+            "rating": rating,
+            "tanggal": tanggal,
+            "ulasan": ulasan,
+        }
+        DATA.setdefault("orders", []).append(order)
+        DATA.setdefault("reviews", []).append(review)
+        save_data(DATA)
+        guild = interaction.guild
+        log_ch = find_channel(guild, "order-logs")
+        if log_ch:
+            await log_ch.send(embed=get_order_log_embed(order))
+        vouch_ch = find_channel(guild, "vouch")
+        if vouch_ch:
+            await vouch_ch.send(embed=get_vouch_embed(review))
+        await update_testimoni_channel(guild)
+        await interaction.response.send_message(f"✅ Makasih! Order **{order_id}** DONE!\nUlasan kamu udah masuk ke #⭐・vouch, #🧾・order-logs, dan rating toko ke-update di #⭐・testimoni! 💖\nTicket akan ditutup dalam 5 detik...", ephemeral=False)
+        if self.channel_id in PENDING:
+            del PENDING[self.channel_id]
+        import asyncio
+        async def close_later():
+            await asyncio.sleep(5)
+            try:
+                ch = guild.get_channel(self.channel_id)
+                if ch:
+                    await ch.delete()
+            except:
+                pass
+        asyncio.create_task(close_later())
+
 class OrderBotModal(discord.ui.Modal):
     def __init__(self, key):
         super().__init__(title="Order Bot - Isi Data")
         self.key = key
-        nama, harga, desc = PRODUCTS_DETAIL[key]
         self.nama_input = discord.ui.TextInput(label="Nama Kamu", placeholder="Contoh: Rafix", required=True, max_length=30)
         self.jenis_input = discord.ui.TextInput(label="Jenis Bot", placeholder="Contoh: Bot Store", required=True, max_length=50)
         self.fitur_input = discord.ui.TextInput(label="Fitur Yang Mau", placeholder="Contoh: Welcome, Ticket, QRIS, dll", required=True, style=discord.TextStyle.paragraph)
@@ -102,10 +298,9 @@ class OrderBotModal(discord.ui.Modal):
     async def on_submit(self, interaction: discord.Interaction):
         nama, harga, desc = PRODUCTS_DETAIL[self.key]
         filled = f"**FORMAT ORDER BOT (UDAH KEISI ✅):**\n```\nNama : {self.nama_input.value}\nJenis Bot : {self.jenis_input.value}\nPaket : {nama} - {harga}\nFitur Yang Mau : {self.fitur_input.value}\nBudget : {harga}\nDeadline : {self.deadline_input.value or '-'}\n```"
-        channel = await create_ticket_filled(interaction, f"{nama} - {harga}", harga, filled)
+        channel = await create_ticket_filled(interaction, f"{nama} - {harga}", harga, filled, extra_data={"nama": self.nama_input.value, "roblox_user": "-", "jumlah": "1 Unit"})
         await interaction.response.send_message(f"Order kamu dibuat & udah keisi! 👉 {channel.mention}", ephemeral=True)
 
-# --- MODAL ROBUX ---
 class OrderRobuxModal(discord.ui.Modal):
     def __init__(self, key):
         super().__init__(title="Order Robux - Via Username")
@@ -117,7 +312,8 @@ class OrderRobuxModal(discord.ui.Modal):
     async def on_submit(self, interaction: discord.Interaction):
         nama, harga, desc = PRODUCTS_DETAIL[self.key]
         filled = f"**FORMAT ORDER ROBUX VIA USERNAME (UDAH KEISI ✅):**\n```\nNama : {self.nama_input.value}\nUsername Roblox : {self.user_input.value}\nJumlah : {nama} - {harga}\nMetode : Via Username ONLY\nBukti TF : -\n```"
-        channel = await create_ticket_filled(interaction, f"{nama} - {harga}", harga, filled)
+        jumlah = "500 Robux" if "500" in nama else "1000 Robux" if "1000" in nama else "1 Unit"
+        channel = await create_ticket_filled(interaction, f"{nama} - {harga}", harga, filled, extra_data={"nama": self.nama_input.value, "roblox_user": self.user_input.value, "jumlah": jumlah})
         await interaction.response.send_message(f"Order kamu dibuat & udah keisi! 👉 {channel.mention}", ephemeral=True)
 
 class OrderButton(discord.ui.View):
@@ -211,5 +407,25 @@ async def ticket(interaction: discord.Interaction):
 async def pricelist(interaction: discord.Interaction):
     embed = discord.Embed(title="💖 PRICELIST - MIPI STORE", description="**🤖 JASA BUAT BOT**\n> SIMPLE - 25K\n> MEDIUM - 50K\n> FULL - 100K\n> PREMIUM - 150K\n> SULTAN - 250K\n> GOD - 500K\n> BOT MUSIC - 30K\n\n**💎 ROBUX VIA USERNAME ONLY**\n> 500 Robux - 76K\n> 1000 Robux - 152K\n\n*Pembayaran QRIS 💖*", color=0x2B2D31)
     await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="setup_store", description="Buat channel vouch, order-logs, testimoni kaya Issa")
+async def setup_store(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    guild = interaction.guild
+    cat = None
+    for c in guild.categories:
+        if "catalog" in c.name.lower():
+            cat = c
+            break
+    if not cat:
+        cat = await guild.create_category("🛍️ — CATALOG —")
+    for name in ["🛍️・product", "⭐・vouch", "🧾・order-logs", "⭐・testimoni"]:
+        if not find_channel(guild, name.split("・")[-1] if "・" in name else name):
+            try:
+                await guild.create_text_channel(name=name, category=cat)
+            except:
+                pass
+    await update_testimoni_channel(guild)
+    await interaction.followup.send("✅ Berhasil! Channel #🛍️・product, #⭐・vouch, #🧾・order-logs, #⭐・testimoni udah dibuat!\nSekarang ketik `/product` di #🛍️・product!", ephemeral=True)
 
 bot.run(os.getenv("DISCORD_TOKEN"))
