@@ -55,7 +55,7 @@ PRODUCTS_DETAIL = {
     "robux1000": ("💎 1000 ROBUX", "Rp 152.000", "Via Username ONLY"),
 }
 
-# --- TICKET + AUTO ISI ---
+# --- TICKET + AUTO ISI + QRIS ---
 async def create_ticket_filled(interaction, paket_nama, harga, filled_text):
     guild = interaction.guild
     category = None
@@ -72,7 +72,8 @@ async def create_ticket_filled(interaction, paket_nama, harga, filled_text):
         guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_messages=True),
     }
     channel = await guild.create_text_channel(name=f"ticket-{interaction.user.name}", category=category, overwrites=overwrites)
-    embed = discord.Embed(title="🎫 TICKET MIPI STORE", description=f"Halo {interaction.user.mention}!\n\nKamu order **{paket_nama}** 💖\n\n{filled_text}\n\nPembayaran via **QRIS** ya! Kirim bukti TF di sini 👇", color=0xFF69B4)
+    embed = discord.Embed(title="🎫 TICKET MIPI STORE", description=f"Halo {interaction.user.mention}!\n\nKamu order **{paket_nama}** 💖\n\n{filled_text}\n\nPembayaran via **QRIS** ya! Scan di bawah ini, terus kirim bukti TF di sini 👇", color=0xFF69B4)
+    embed.set_image(url="https://raw.githubusercontent.com/mipistore/mipi-store/main/IMG_5210.jpeg")
     await channel.send(embed=embed, view=CloseTicketView())
     return channel
 
@@ -84,26 +85,27 @@ class CloseTicketView(discord.ui.View):
         await interaction.response.send_message("Ticket akan ditutup dalam 5 detik...")
         await interaction.channel.delete()
 
-# --- MODAL BOT: LANGSUNG NGISI ---
+# --- MODAL BOT - UDAH DIPISAH BIAR GA DOBEL ---
 class OrderBotModal(discord.ui.Modal):
     def __init__(self, key):
         super().__init__(title="Order Bot - Isi Data")
         self.key = key
         nama, harga, desc = PRODUCTS_DETAIL[key]
         self.nama_input = discord.ui.TextInput(label="Nama Kamu", placeholder="Contoh: Rafix", required=True, max_length=30)
-        self.jenis_input = discord.ui.TextInput(label="Jenis Bot / Fitur Yang Mau", placeholder="Contoh: Bot Store / Music 24/7", required=True, style=discord.TextStyle.paragraph)
+        self.jenis_input = discord.ui.TextInput(label="Jenis Bot", placeholder="Contoh: Bot Store", required=True, max_length=50)
+        self.fitur_input = discord.ui.TextInput(label="Fitur Yang Mau", placeholder="Contoh: Welcome, Ticket, QRIS, dll", required=True, style=discord.TextStyle.paragraph)
         self.deadline_input = discord.ui.TextInput(label="Deadline", placeholder="Contoh: Besok / 3 Hari", required=False)
         self.add_item(self.nama_input)
         self.add_item(self.jenis_input)
+        self.add_item(self.fitur_input)
         self.add_item(self.deadline_input)
     async def on_submit(self, interaction: discord.Interaction):
         nama, harga, desc = PRODUCTS_DETAIL[self.key]
-        # AUTO ISI: Paket & Budget langsung keisi dari produk yang dipencet!
-        filled = f"**FORMAT ORDER BOT (UDAH KEISI ✅):**\n```\nNama : {self.nama_input.value}\nJenis Bot : {self.jenis_input.value}\nPaket : {nama} - {harga}\nFitur Yang Mau : {self.jenis_input.value}\nBudget : {harga}\nDeadline : {self.deadline_input.value or '-'}\n```"
+        filled = f"**FORMAT ORDER BOT (UDAH KEISI ✅):**\n```\nNama : {self.nama_input.value}\nJenis Bot : {self.jenis_input.value}\nPaket : {nama} - {harga}\nFitur Yang Mau : {self.fitur_input.value}\nBudget : {harga}\nDeadline : {self.deadline_input.value or '-'}\n```"
         channel = await create_ticket_filled(interaction, f"{nama} - {harga}", harga, filled)
         await interaction.response.send_message(f"Order kamu dibuat & udah keisi! 👉 {channel.mention}", ephemeral=True)
 
-# --- MODAL ROBUX: LANGSUNG NGISI ---
+# --- MODAL ROBUX ---
 class OrderRobuxModal(discord.ui.Modal):
     def __init__(self, key):
         super().__init__(title="Order Robux - Via Username")
@@ -124,7 +126,6 @@ class OrderButton(discord.ui.View):
         self.key = key
     @discord.ui.button(label="🛒 Order / Beli Sekarang", style=discord.ButtonStyle.green, custom_id="order_now")
     async def order_now(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Kalo Robux -> Modal Robux, Kalo Bot -> Modal Bot
         if "robux" in self.key:
             await interaction.response.send_modal(OrderRobuxModal(self.key))
         else:
