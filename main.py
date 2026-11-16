@@ -2,6 +2,8 @@ import discord
 from discord.ext import commands
 import os
 import json
+import time
+import asyncio
 from datetime import datetime
 
 intents = discord.Intents.default()
@@ -35,6 +37,7 @@ def save_data(data):
 
 DATA = load_data()
 PENDING = {}
+COOLDOWN = {}
 
 @bot.event
 async def on_ready():
@@ -195,14 +198,33 @@ async def create_ticket_filled(interaction, paket_nama, harga, filled_text, extr
     }
     return channel
 
+# --- TOMBOL DI DALEM TICKET: DIKUNCI! CUMA PEMILIK + ADMIN ---
 class TicketActionView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
+    def is_allowed(self, interaction, channel_id):
+        if interaction.user.guild_permissions.manage_channels or interaction.user.guild_permissions.administrator:
+            return True
+        data = PENDING.get(channel_id, {})
+        if data.get("customer_id") == interaction.user.id:
+            return True
+        ch_name = interaction.channel.name.lower() if interaction.channel else ""
+        if ch_name.startswith("ticket-"):
+            owner_name = ch_name.replace("ticket-", "").strip()
+            if interaction.user.name.lower() == owner_name:
+                return True
+        return False
     @discord.ui.button(label="✅ Tandai Selesai / DONE", style=discord.ButtonStyle.green, custom_id="ticket_done")
     async def ticket_done(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not self.is_allowed(interaction, interaction.channel.id):
+            await interaction.response.send_message("❌ Ehh, ini bukan ticket kamu! Cuma pemilik ticket + admin yang bisa pencet DONE!", ephemeral=True)
+            return
         await interaction.response.send_modal(ReviewModal(interaction.channel.id))
     @discord.ui.button(label="🔒 Close Ticket", style=discord.ButtonStyle.red, custom_id="close_ticket")
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not self.is_allowed(interaction, interaction.channel.id):
+            await interaction.response.send_message("❌ Ehh, ini bukan ticket kamu! Cuma pemilik ticket + admin yang bisa Close!", ephemeral=True)
+            return
         await interaction.response.send_message("Ticket akan ditutup dalam 5 detik...")
         await interaction.channel.delete()
 
@@ -272,7 +294,6 @@ class ReviewModal(discord.ui.Modal):
         await interaction.response.send_message(f"✅ Makasih! Order **{order_id}** DONE!\nUlasan kamu udah masuk ke #⭐・vouch, #🧾・order-logs, dan rating toko ke-update di #⭐・testimoni! 💖\nTicket akan ditutup dalam 5 detik...", ephemeral=False)
         if self.channel_id in PENDING:
             del PENDING[self.channel_id]
-        import asyncio
         async def close_later():
             await asyncio.sleep(5)
             try:
@@ -316,12 +337,25 @@ class OrderRobuxModal(discord.ui.Modal):
         channel = await create_ticket_filled(interaction, f"{nama} - {harga}", harga, filled, extra_data={"nama": self.nama_input.value, "roblox_user": self.user_input.value, "jumlah": jumlah})
         await interaction.response.send_message(f"Order kamu dibuat & udah keisi! 👉 {channel.mention}", ephemeral=True)
 
+# --- ANTI-SPAM: 1 TICKET + COOLDOWN 60 DETIK ---
 class OrderButton(discord.ui.View):
     def __init__(self, key):
         super().__init__(timeout=None)
         self.key = key
     @discord.ui.button(label="🛒 Order / Beli Sekarang", style=discord.ButtonStyle.green, custom_id="order_now")
     async def order_now(self, interaction: discord.Interaction, button: discord.ui.Button):
+        user_id = interaction.user.id
+        now = time.time()
+        existing = discord.utils.get(interaction.guild.text_channels, name=f"ticket-{interaction.user.name.lower()}")
+        if existing:
+            await interaction.response.send_message(f"❌ Kamu udah punya ticket aktif! Selesaikan dulu 👉 {existing.mention}\nGa bisa bikin ticket baru sebelum yang lama di-close!", ephemeral=True)
+            return
+        last = COOLDOWN.get(user_id, 0)
+        sisa = 60 - (now - last)
+        if sisa > 0:
+            await interaction.response.send_message(f"⏳ Ehh sabar! Tunggu {int(sisa)} detik lagi baru bisa order lagi! Biar ga spam!", ephemeral=True)
+            return
+        COOLDOWN[user_id] = now
         if "robux" in self.key:
             await interaction.response.send_modal(OrderRobuxModal(self.key))
         else:
