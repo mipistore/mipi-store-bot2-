@@ -63,13 +63,16 @@ CATEGORIES = {
             ("🎵 BOT MUSIC - Rp 30.000", "music"),
         ]
     },
-    "robux": {
-        "kategori": "Robux Via Username",
-        "rate": "Rp 152 / 1 R$",
-        "list": "• 500 Robux\n  └ 🏷️ Rp 76.000\n• 1000 Robux\n  └ 🏷️ Rp 152.000",
+    "setup": {
+        "kategori": "Jasa Setup DC",
+        "rate": "Mulai Rp 25.000",
+        "list": "• SETUP SIMPLE\n  └ 🏷️ Rp 25.000\n• SETUP MEDIUM\n  └ 🏷️ Rp 50.000\n• SETUP FULL\n  └ 🏷️ Rp 100.000\n• SETUP PREMIUM\n  └ 🏷️ Rp 150.000\n• SETUP SULTAN\n  └ 🏷️ Rp 250.000",
         "products": [
-            ("💎 500 Robux - Rp 76.000", "robux500"),
-            ("💎 1000 Robux - Rp 152.000", "robux1000"),
+            ("🛠️ SETUP SIMPLE - Rp 25.000", "setup_simple"),
+            ("🛠️ SETUP MEDIUM - Rp 50.000", "setup_medium"),
+            ("🛠️ SETUP FULL - Rp 100.000", "setup_full"),
+            ("🛠️ SETUP PREMIUM - Rp 150.000", "setup_premium"),
+            ("🛠️ SETUP SULTAN - Rp 250.000", "setup_sultan"),
         ]
     },
 }
@@ -82,8 +85,11 @@ PRODUCTS_DETAIL = {
     "sultan": ("🔥 SULTAN", "Rp 250.000", "Semua Premium + 5 Fitur Custom + 2 Bot + Banner Gratis + VIP"),
     "god": ("🧊 GOD", "Rp 500.000", "Semua Sultan + Unlimited + Source Code + Partner MIPI"),
     "music": ("🎵 BOT MUSIC", "Rp 30.000", "Music 24/7 + Play / Skip / Queue + Spotify & Youtube"),
-    "robux500": ("💎 500 ROBUX", "Rp 76.000", "Via Username ONLY"),
-    "robux1000": ("💎 1000 ROBUX", "Rp 152.000", "Via Username ONLY"),
+    "setup_simple": ("🛠️ SETUP SIMPLE", "Rp 25.000", "Channel + Role + Kategori + Rules"),
+    "setup_medium": ("🛠️ SETUP MEDIUM", "Rp 50.000", "Simple + Ticket + Welcome + Vouch + Pricelist"),
+    "setup_full": ("🛠️ SETUP FULL", "Rp 100.000", "Medium + Bot Ticket + Leaderboard + Banner + Catalog"),
+    "setup_premium": ("🛠️ SETUP PREMIUM", "Rp 150.000", "Semua Full + Custom Design + Setup Hosting + Support 7 Hari"),
+    "setup_sultan": ("🛠️ SETUP SULTAN", "Rp 250.000", "Semua Premium + 2 Bot + Banner Gratis + VIP + Support Lifetime"),
 }
 
 def find_channel(guild, name_part):
@@ -118,7 +124,7 @@ def get_vouch_embed(review):
 def get_order_log_embed(order):
     embed = discord.Embed(title=f"🧾 ORDER LOG — {order['order_id']}", color=0x2B2D31)
     embed.add_field(name="👤 Customer:", value=order["customer_mention"], inline=False)
-    embed.add_field(name="🎮 Roblox User:", value=order.get("roblox_user", "-"), inline=False)
+    embed.add_field(name="🎮 Nama Server:", value=order.get("roblox_user", "-"), inline=False)
     embed.add_field(name="📦 Produk:", value=order["produk"], inline=False)
     embed.add_field(name="📦 Jumlah:", value=order.get("jumlah", "1 Unit"), inline=False)
     embed.add_field(name="💰 Total Bayar:", value=order["harga"], inline=False)
@@ -322,19 +328,22 @@ class OrderBotModal(discord.ui.Modal):
         channel = await create_ticket_filled(interaction, f"{nama} - {harga}", harga, filled, extra_data={"nama": self.nama_input.value, "roblox_user": "-", "jumlah": "1 Unit"})
         await interaction.response.send_message(f"Order kamu dibuat & udah keisi! 👉 {channel.mention}", ephemeral=True)
 
-class OrderRobuxModal(discord.ui.Modal):
+class OrderSetupModal(discord.ui.Modal):
     def __init__(self, key):
-        super().__init__(title="Order Robux - Via Username")
+        super().__init__(title="Order Setup DC - Isi Data")
         self.key = key
         self.nama_input = discord.ui.TextInput(label="Nama Kamu", placeholder="Contoh: Rafix", required=True, max_length=30)
-        self.user_input = discord.ui.TextInput(label="Username Roblox", placeholder="Contoh: RafixMP", required=True, max_length=30)
+        self.server_input = discord.ui.TextInput(label="Nama Server Discord Kamu", placeholder="Contoh: MIPI STORE", required=True, max_length=30)
+        self.tema_input = discord.ui.TextInput(label="Tema / Mau Setup Apa Aja?", placeholder="Contoh: Store Robux, tema pink, mau ada ticket + vouch", required=True, style=discord.TextStyle.paragraph)
+        self.deadline_input = discord.ui.TextInput(label="Deadline", placeholder="Contoh: Besok / 3 Hari", required=False)
         self.add_item(self.nama_input)
-        self.add_item(self.user_input)
+        self.add_item(self.server_input)
+        self.add_item(self.tema_input)
+        self.add_item(self.deadline_input)
     async def on_submit(self, interaction: discord.Interaction):
         nama, harga, desc = PRODUCTS_DETAIL[self.key]
-        filled = f"**FORMAT ORDER ROBUX VIA USERNAME (UDAH KEISI ✅):**\n```\nNama : {self.nama_input.value}\nUsername Roblox : {self.user_input.value}\nJumlah : {nama} - {harga}\nMetode : Via Username ONLY\nBukti TF : -\n```"
-        jumlah = "500 Robux" if "500" in nama else "1000 Robux" if "1000" in nama else "1 Unit"
-        channel = await create_ticket_filled(interaction, f"{nama} - {harga}", harga, filled, extra_data={"nama": self.nama_input.value, "roblox_user": self.user_input.value, "jumlah": jumlah})
+        filled = f"**FORMAT ORDER SETUP DC (UDAH KEISI ✅):**\n```\nNama : {self.nama_input.value}\nNama Server : {self.server_input.value}\nPaket : {nama} - {harga}\nTema / Request : {self.tema_input.value}\nDeadline : {self.deadline_input.value or '-'}\nBukti TF : -\n```"
+        channel = await create_ticket_filled(interaction, f"{nama} - {harga}", harga, filled, extra_data={"nama": self.nama_input.value, "roblox_user": self.server_input.value, "jumlah": "1 Unit"})
         await interaction.response.send_message(f"Order kamu dibuat & udah keisi! 👉 {channel.mention}", ephemeral=True)
 
 # --- ANTI-SPAM: 1 TICKET + COOLDOWN 60 DETIK ---
@@ -356,8 +365,8 @@ class OrderButton(discord.ui.View):
             await interaction.response.send_message(f"⏳ Ehh sabar! Tunggu {int(sisa)} detik lagi baru bisa order lagi! Biar ga spam!", ephemeral=True)
             return
         COOLDOWN[user_id] = now
-        if "robux" in self.key:
-            await interaction.response.send_modal(OrderRobuxModal(self.key))
+        if self.key.startswith("setup_"):
+            await interaction.response.send_modal(OrderSetupModal(self.key))
         else:
             await interaction.response.send_modal(OrderBotModal(self.key))
 
@@ -365,9 +374,9 @@ class CategorySelect(discord.ui.Select):
     def __init__(self, current="bot"):
         options = [
             discord.SelectOption(label="🤖 Jasa Buat Bot", description="Lihat produk di kategori ini", value="bot", emoji="🤖"),
-            discord.SelectOption(label="💎 Robux Via Username", description="Lihat produk di kategori ini", value="robux", emoji="💎"),
+            discord.SelectOption(label="🛠️ Jasa Setup DC", description="Lihat produk di kategori ini", value="setup", emoji="🛠️"),
         ]
-        placeholder = "🤖 Jasa Buat Bot" if current == "bot" else "💎 Robux Via Username"
+        placeholder = "🤖 Jasa Buat Bot" if current == "bot" else "🛠️ Jasa Setup DC"
         super().__init__(placeholder=placeholder, options=options, custom_id="cat_select")
     async def callback(self, interaction: discord.Interaction):
         cat_key = self.values[0]
@@ -434,12 +443,12 @@ class TicketView(discord.ui.View):
 
 @bot.tree.command(name="ticket", description="Kirim panel open ticket")
 async def ticket(interaction: discord.Interaction):
-    embed = discord.Embed(title="MIPI STORE - OPEN!", description="**List Bisa Dibuat / Dibeli:**\n> 🤖 Jasa Buat Bot - Mulai 25K\n> 💎 Robux Via Username - 500 = 76K / 1000 = 152K\n\n**Cara Order:**\n1. Ke channel `#🛍️・product` pilih produk\n2. Pencet Order -> Isi Form -> Ticket langsung keisi!\n\n*Pembayaran QRIS 💖*", color=0x2B2D31)
+    embed = discord.Embed(title="MIPI STORE - OPEN!", description="**List Bisa Dibuat / Dibeli:**\n> 🤖 Jasa Buat Bot - Mulai 25K\n> 🛠️ Jasa Setup DC - Mulai 25K\n\n**Cara Order:**\n1. Ke channel `#🛍️・product` pilih produk\n2. Pencet Order -> Isi Form -> Ticket langsung keisi!\n\n*Pembayaran QRIS 💖*", color=0x2B2D31)
     await interaction.response.send_message(embed=embed, view=TicketView())
 
 @bot.tree.command(name="pricelist", description="Lihat pricelist")
 async def pricelist(interaction: discord.Interaction):
-    embed = discord.Embed(title="💖 PRICELIST - MIPI STORE", description="**🤖 JASA BUAT BOT**\n> SIMPLE - 25K\n> MEDIUM - 50K\n> FULL - 100K\n> PREMIUM - 150K\n> SULTAN - 250K\n> GOD - 500K\n> BOT MUSIC - 30K\n\n**💎 ROBUX VIA USERNAME ONLY**\n> 500 Robux - 76K\n> 1000 Robux - 152K\n\n*Pembayaran QRIS 💖*", color=0x2B2D31)
+    embed = discord.Embed(title="💖 PRICELIST - MIPI STORE", description="**🤖 JASA BUAT BOT**\n> SIMPLE - 25K\n> MEDIUM - 50K\n> FULL - 100K\n> PREMIUM - 150K\n> SULTAN - 250K\n> GOD - 500K\n> BOT MUSIC - 30K\n\n**🛠️ JASA SETUP DC**\n> SETUP SIMPLE - 25K\n> SETUP MEDIUM - 50K\n> SETUP FULL - 100K\n> SETUP PREMIUM - 150K\n> SETUP SULTAN - 250K\n\n*Pembayaran QRIS 💖*", color=0x2B2D31)
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="setup_store", description="Buat channel vouch, order-logs, testimoni kaya Issa")
