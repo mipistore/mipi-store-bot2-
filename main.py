@@ -4,6 +4,8 @@ import os
 import json
 import time
 import asyncio
+import re
+import aiohttp
 from datetime import datetime
 
 intents = discord.Intents.default()
@@ -13,8 +15,6 @@ intents.guilds = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 DATA_FILE = "mipi_data.json"
-
-# --- ID CHANNEL ASLI KAMU ---
 VOUCH_CHANNEL_ID = 1571783490297528420
 ORDER_LOGS_CHANNEL_ID = 1571783908058730547
 TESTIMONI_CHANNEL_ID = 1571784387438055515
@@ -204,7 +204,6 @@ async def create_ticket_filled(interaction, paket_nama, harga, filled_text, extr
     }
     return channel
 
-# --- TOMBOL DI DALEM TICKET: DIKUNCI! CUMA PEMILIK + ADMIN ---
 class TicketActionView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -346,7 +345,6 @@ class OrderSetupModal(discord.ui.Modal):
         channel = await create_ticket_filled(interaction, f"{nama} - {harga}", harga, filled, extra_data={"nama": self.nama_input.value, "roblox_user": self.server_input.value, "jumlah": "1 Unit"})
         await interaction.response.send_message(f"Order kamu dibuat & udah keisi! 👉 {channel.mention}", ephemeral=True)
 
-# --- ANTI-SPAM: 1 TICKET + COOLDOWN 60 DETIK ---
 class OrderButton(discord.ui.View):
     def __init__(self, key):
         super().__init__(timeout=None)
@@ -470,5 +468,270 @@ async def setup_store(interaction: discord.Interaction):
                 pass
     await update_testimoni_channel(guild)
     await interaction.followup.send("✅ Berhasil! Channel #🛍️・product, #⭐・vouch, #🧾・order-logs, #⭐・testimoni udah dibuat!\nSekarang ketik `/product` di #🛍️・product!", ephemeral=True)
+
+# ========== CHECKAVATAR V6 - TETEP ADA, SEMUA BISA DIPENCET ==========
+@bot.tree.command(name="checkavatar", description="Mengecek detail profil dan avatar akun Roblox dengan username")
+async def checkavatar(interaction: discord.Interaction, username: str):
+    await interaction.response.defer()
+    try:
+        headers = {"User-Agent": "Mozilla/5.0 MIPI-STORE-Bot"}
+        async with aiohttp.ClientSession(headers=headers) as s:
+            async with s.post("https://users.roproxy.com/v1/usernames/users", json={"usernames": [username], "excludeBannedUsers": True}) as r:
+                data = await r.json()
+            if not data.get("data"):
+                await interaction.followup.send(f"❌ Username `{username}` tidak ditemukan!")
+                return
+            user = data["data"][0]
+            user_id = user["id"]
+            display = user.get("displayName", username)
+            uname = user.get("name", username)
+            async with s.get(f"https://users.roproxy.com/v1/users/{user_id}") as r:
+                info = await r.json()
+            created = info.get("created", "")
+            try: tgl = datetime.fromisoformat(created.replace("Z", "+00:00")).strftime("%d %B %Y")
+            except: tgl = created
+            async with s.get(f"https://avatar.roproxy.com/v1/users/{user_id}/avatar") as r:
+                av = await r.json()
+            tipe = av.get("playerAvatarType", "R15")
+            assets = av.get("assets", [])
+            names = {}
+            sem = asyncio.Semaphore(8)
+            async def get_nama(aid):
+                async with sem:
+                    try:
+                        async with s.get(f"https://economy.roproxy.com/v2/assets/{aid}/details") as r:
+                            if r.status == 200:
+                                d = await r.json()
+                                if d.get("Name"):
+                                    return aid, d["Name"]
+                    except: pass
+                    try:
+                        async with s.get(f"https://api.roproxy.com/marketplace/productinfo?assetId={aid}") as r:
+                            if r.status == 200:
+                                d = await r.json()
+                                if d.get("Name"):
+                                    return aid, d["Name"]
+                    except: pass
+                    try:
+                        async with s.post("https://catalog.roproxy.com/v1/catalog/items/details", json={"items": [{"id": aid, "itemType": "Asset"}]}) as r:
+                            if r.status == 200:
+                                d = await r.json()
+                                if d.get("data") and d["data"][0].get("name"):
+                                    return aid, d["data"][0]["name"]
+                    except: pass
+                    return aid, None
+            hasil = await asyncio.gather(*[get_nama(a["id"]) for a in assets])
+            for aid, nm in hasil:
+                if nm: names[aid] = nm
+            def link(nama, aid):
+                slug = re.sub(r'[^a-zA-Z0-9\- ]', '', nama).strip().replace(' ', '-')
+                nama_bersih = nama.replace('[', '').replace(']', '').replace('(', '').replace(')', '')
+                return f"[{nama_bersih}](https://www.roblox.com/catalog/{aid}/{slug})"
+            aksesoris, pakaian, tubuh, animasi = [], [], [], []
+            for a in assets:
+                aid = a["id"]
+                nama_asli = names.get(aid, f"Asset {aid}")
+                nama = link(nama_asli, aid)
+                t = a.get("assetType", {}).get("name", "")
+                tid = a.get("assetType", {}).get("id", 0)
+                low = nama_asli.lower()
+                if any(x in low for x in ["skirt", "dress", "top ", "top and", "shirt", "tshirt", "t-shirt", "pants", "shorts", "jeans", "jacket", "hoodie", "sweater", "cardigan", "blouse", "outfit", "uniform", "pajama", "bikini", "swimsuit", "leggings", "vest"]):
+                    pakaian.append(nama)
+                elif any(x in low for x in ["doll", "torso", "- right arm", "- left arm", "- right leg", "- left leg", "dynamic head"]) and "hair" not in low and "hat" not in low and "glasses" not in low:
+                    tubuh.append(nama)
+                elif any(x in low for x in ["run", "walk", "jump", "fall", "swim", "climb", "idle", "mood", "animation", "emote", "dance", "pack"]):
+                    animasi.append(nama)
+                elif tid in [11, 12, 2]:
+                    pakaian.append(nama)
+                elif tid in [17, 18, 27, 28, 29, 30, 31]:
+                    tubuh.append(nama)
+                elif tid in [61, 62, 63, 64]:
+                    animasi.append(nama)
+                elif t in ["Hat", "HairAccessory", "FaceAccessory", "NeckAccessory", "ShoulderAccessory", "FrontAccessory", "BackAccessory", "WaistAccessory", "Gear", "Hair", "Face"]:
+                    aksesoris.append(nama)
+                elif t in ["Shirt", "Pants", "TShirt", "Jacket", "Sweater", "Shorts", "DressSkirt", "Skirt", "ShirtGraphic"]:
+                    pakaian.append(nama)
+                elif t in ["Head", "Torso", "RightArm", "LeftArm", "RightLeg", "LeftLeg", "DynamicHead"]:
+                    tubuh.append(nama)
+                elif "Animation" in t or "Emote" in t or t in ["Run", "Walk", "Jump", "Fall", "Swim", "Climb", "Idle", "Mood", "Animation"]:
+                    animasi.append(nama)
+                else:
+                    aksesoris.append(nama)
+            async with s.get(f"https://thumbnails.roproxy.com/v1/users/avatar?userIds={user_id}&size=720x720&format=Png&isCircular=false") as r:
+                thumb = await r.json()
+            avatar_url = thumb["data"][0]["imageUrl"] if thumb.get("data") else None
+            profil_url = f"https://www.roblox.com/users/{user_id}/profile"
+            profil_link = f"[{uname}]({profil_url})"
+            desc = f"🔍 **Profil Roblox:** {profil_link}\n"
+            desc += f"👤 **Display Name**\n{display}\n"
+            desc += f"🆔 **User ID**\n{user_id}\n"
+            desc += f"📅 **Tanggal Dibuat**\n{tgl}\n"
+            desc += f"🏃 **Tipe Avatar**\n{tipe}\n\n"
+            desc += f"🎩 **Aksesoris**\n" + ("".join([f"• {x}\n" for x in aksesoris]) if aksesoris else "• -\n")
+            desc += f"\n👕 **Pakaian**\n" + ("".join([f"• {x}\n" for x in pakaian]) if pakaian else "• -\n")
+            desc += f"\n👤 **Tubuh & Wajah**\n" + ("".join([f"• {x}\n" for x in tubuh]) if tubuh else "• -\n")
+            desc += f"\n🎬 **Animasi & Bundel**\n" + ("".join([f"• {x}\n" for x in animasi]) if animasi else "• -\n")
+            if len(desc) > 4000:
+                desc = desc[:3950] + "\n... (terlalu banyak item)"
+            e = discord.Embed(title=f"Profil Roblox: {uname}", description=desc, color=0xFF69B4)
+            e.url = profil_url
+            if avatar_url: e.set_image(url=avatar_url)
+            e.set_footer(text="MIPI STORE • /checkavatar • Klik nama item / profil buat buka di Roblox")
+            view = discord.ui.View()
+            view.add_item(discord.ui.Button(label="👤 Buka Profil Roblox", style=discord.ButtonStyle.link, url=profil_url, emoji="🔍"))
+            view.add_item(discord.ui.Button(label="🎮 Lihat Avatar 3D", style=discord.ButtonStyle.link, url=profil_url))
+            await interaction.followup.send(embed=e, view=view)
+    except Exception as ex:
+        await interaction.followup.send(f"❌ Gagal cek avatar: {ex}")
+
+# ========== CHECKAVATAR GAMPANG - TINGGAL PENCET ==========
+class CheckAvatarModal(discord.ui.Modal, title="🔍 Cek Avatar Roblox"):
+    username_input = discord.ui.TextInput(label="Username Roblox", placeholder="Contoh: DENCOW2505", required=True, max_length=20)
+    async def on_submit(self, interaction: discord.Interaction):
+        username = self.username_input.value.strip()
+        await checkavatar.callback(interaction, username)
+
+class CheckAvatarButtonView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+    @discord.ui.button(label="🔍 CEK AVATAR ROBLOX", style=discord.ButtonStyle.blurple, custom_id="cek_avatar_pencet", emoji="🔍")
+    async def cek_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(CheckAvatarModal())
+    @discord.ui.button(label="💰 CEK RBX / GAMEPASS", style=discord.ButtonStyle.green, custom_id="cek_rbx_pencet", emoji="💰")
+    async def cek_rbx_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("Ketik ini di channel ini:\n```\n/cekrbx username: usernameKamu\n```", ephemeral=True)
+
+@bot.tree.command(name="checkavatar-panel", description="Kirim panel pencet cek avatar (Owner only)")
+async def checkavatar_panel(interaction: discord.Interaction):
+    if interaction.user.id != interaction.guild.owner_id:
+        await interaction.response.send_message("❌ Hanya Owner!", ephemeral=True); return
+    e = discord.Embed(color=0xff69b4)
+    e.description = (
+        "## 🌸・CHECK AVATAR ROBLOX\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "Mau cek avatar temen / akun kamu?\n"
+        "**Ga usah ketik command!** ✨\n\n"
+        "### 👇 CARANYA GAMPANG BANGET:\n"
+        "1. Pencet tombol **🔍 CEK AVATAR ROBLOX** dibawah\n"
+        "2. Ketik username Roblox kamu\n"
+        "3. Pencet Kirim / Enter\n"
+        "4. Langsung muncul avatar + semua itemnya!\n\n"
+        "Semua item bisa dipencet -> langsung ke Catalog Roblox! 💖\n\n"
+        "💗 *MIPI STORE • Aman, Cepat, Terpercaya*"
+    )
+    e.set_image(url="https://raw.githubusercontent.com/mipistore/mipi-store/main/----563dc75098ea.jpeg")
+    e.set_footer(text="MIPI STORE • Tinggal Pencet Aja!")
+    await interaction.response.send_message(embed=e, view=CheckAvatarButtonView())
+
+@bot.tree.command(name="cekrbx", description="Link untuk mengecek riwayat transaksi Robux Gamepass")
+async def cekrbx(interaction: discord.Interaction, username: str = None, link_gamepass: str = None):
+    await interaction.response.defer(ephemeral=True)
+    e = discord.Embed(title="🔍 CEK RIWAYAT TRANSAKSI ROBUX - MIPI STORE", description="Cek sendiri Robux kamu udah masuk / belum, tanpa nunggu admin! 💗", color=0xFF69B4)
+    if username:
+        try:
+            async with aiohttp.ClientSession() as s:
+                async with s.post("https://users.roblox.com/v1/usernames/users", json={"usernames": [username], "excludeBannedUsers": True}) as r:
+                    data = await r.json()
+                if not data.get("data"):
+                    await interaction.followup.send(f"❌ Username `{username}` tidak ditemukan!", ephemeral=True); return
+                user_id = data["data"][0]["id"]
+                display = data["data"][0].get("displayName", username)
+                gamepasses = []
+                async with s.get(f"https://games.roblox.com/v2/users/{user_id}/games?limit=50&sortOrder=Asc") as r:
+                    games = await r.json()
+                for g in games.get("data", [])[:5]:
+                    async with s.get(f"https://games.roblox.com/v1/games/{g.get('id')}/game-passes?limit=50&sortOrder=Asc") as r2:
+                        gp = await r2.json()
+                    for p in gp.get("data", []):
+                        gamepasses.append(f"• **{p['name']}** - {p.get('price', 0)} R$ | ID: `{p['id']}`")
+                e.add_field(name=f"👤 Akun: {username} ({display})", value=f"🆔 User ID: `{user_id}`\n\n**🎫 Gamepass:**\n" + ("\n".join(gamepasses[:10]) if gamepasses else "• Tidak ada / Private"), inline=False)
+        except Exception as ex:
+            e.add_field(name="⚠️ Info", value=f"Gagal ambil gamepass: {ex}", inline=False)
+    if link_gamepass:
+        m = re.search(r'(\d+)', link_gamepass)
+        if m:
+            gp_id = m.group(1)
+            e.add_field(name="🎫 Gamepass yang dicek", value=f"ID: `{gp_id}`\nLink: https://www.roblox.com/game-pass/{gp_id}", inline=False)
+            try:
+                async with aiohttp.ClientSession() as s:
+                    async with s.get(f"https://economy.roblox.com/v1/game-pass/{gp_id}/details") as r:
+                        d = await r.json()
+                    e.add_field(name="📊 Detail Gamepass", value=f"Nama: **{d.get('Name', '-')}**\nHarga: **{d.get('PriceInRobux', 0)} R$**\nPenjual: **{d.get('SellerName', '-')}**\nTerjual: **{d.get('Sales', 0)}x**", inline=False)
+            except: pass
+    e.add_field(name="🔗 LINK CEK RESMI ROBLOX", value="1. **Cek Transaksi:**\nhttps://www.roblox.com/transactions\n\n2. **Cek Pending Robux:**\nhttps://www.roblox.com/transactions#pending-robux\n\n3. **Cek Saldo:**\nhttps://www.roblox.com/my/account#!/info", inline=False)
+    e.add_field(name="📖 CARA CEK", value="1. Login Roblox di browser\n2. Buka link Transaksi di atas\n3. Pilih Penjualan / Pembelian\n4. Kalau Pending, tunggu 3-7 hari (Hold Roblox)\n5. Kalau udah masuk, cek di pojok kanan atas", inline=False)
+    e.set_footer(text="MIPI STORE • Kalau belum masuk 3 hari, buka tiket di #open-ticket")
+    await interaction.followup.send(embed=e, ephemeral=True)
+
+@bot.tree.command(name="setup-cek", description="Buatin channel cek yang estetik otomatis (Owner only)")
+async def setup_cek(interaction: discord.Interaction):
+    if interaction.user.id != interaction.guild.owner_id:
+        await interaction.response.send_message("❌ Hanya Owner!", ephemeral=True); return
+    await interaction.response.defer(ephemeral=True)
+    guild = interaction.guild
+    cat = None
+    for c in guild.categories:
+        if "MIPI" in c.name.upper() and "CEK" in c.name.upper():
+            cat = c; break
+    if not cat:
+        cat = await guild.create_category("🌸・MIPI — CEK ROBLOX")
+    ch1 = await guild.create_text_channel("🔍┆・check-avatar", category=cat, topic="✨ Cek avatar Roblox kamu disini | /checkavatar")
+    ch2 = await guild.create_text_channel("💰┆・cek-rbx", category=cat, topic="✨ Cek riwayat Robux / Gamepass disini | /cekrbx")
+    e1 = discord.Embed(color=0xff69b4)
+    e1.description = (
+        "## 🌸・CHECK AVATAR ROBLOX\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "Mau liat avatar temen? Atau mau cek akun kamu sendiri sebelum order?\n"
+        "Cek disini aja, **gratis & instan!** ✨\n\n"
+        "### 👇 CARANYA GAMPANG BANGET:\n"
+        "1. Pencet tombol **🔍 CEK AVATAR ROBLOX** dibawah\n"
+        "2. Ketik username Roblox kamu\n"
+        "3. Pencet Kirim\n\n"
+        "### 💡 ATAU KETIK MANUAL:\n"
+        "```\n/checkavatar username: 1mrafii\n```\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "### 🎁 YANG AKAN MUNCUL\n"
+        "👤 Profil • 🆔 User ID • 📅 Tanggal Dibuat\n"
+        "🎩 Aksesoris • 👕 Pakaian • 🦵 Tubuh & Wajah\n"
+        "🎬 Animasi • 🖼️ Foto Avatar HD\n\n"
+        "💗 *MIPI STORE • Aman, Cepat, Terpercaya*"
+    )
+    e1.set_image(url="https://raw.githubusercontent.com/mipistore/mipi-store/main/----563dc75098ea.jpeg")
+    e1.set_footer(text="MIPI STORE • /checkavatar • Check Avatar Roblox")
+    e2 = discord.Embed(color=0xff69b4)
+    e2.description = (
+        "## 💰・CEK RIWAYAT ROBUX\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "Robux belum masuk? Jangan panik dulu Wal! 😭\n"
+        "Cek sendiri disini, **tanpa nunggu admin!** ✨\n\n"
+        "### 📝 CARA PAKAI\n"
+        "Ketik di channel ini:\n"
+        "```\n/cekrbx username: usernameRobloxKamu\n```\n"
+        "### 💡 CEK GAMEPASS\n"
+        "```\n/cekrbx link_gamepass: linkGamepassKamu\n```\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        "### 🔗 LINK RESMI ROBLOX\n"
+        "[📦 Cek Transaksi](https://www.roblox.com/transactions)\n"
+        "[⏳ Cek Pending Robux](https://www.roblox.com/transactions#pending-robux)\n"
+        "[💳 Cek Saldo](https://www.roblox.com/my/account#!/info)\n\n"
+        "### 📖 KENAPA PENDING?\n"
+        "Roblox hold Robux **3 - 7 hari** ya Wal, itu normal!\n"
+        "Kalau udah 7 hari belum masuk, buka tiket di <#open-ticket>\n\n"
+        "💗 *MIPI STORE • Aman, Cepat, Terpercaya*"
+    )
+    e2.set_image(url="https://raw.githubusercontent.com/mipistore/mipi-store/main/IMG_5210.jpeg")
+    e2.set_footer(text="MIPI STORE • /cekrbx • Cek Robux & Gamepass")
+    await ch1.send(embed=e1, view=CheckAvatarButtonView())
+    await ch2.send(embed=e2)
+    done = discord.Embed(color=0x57f287)
+    done.description = (
+        "## ✅ BERHASIL DIBUAT! 🎉\n"
+        "━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📂 Kategori: **{cat.name}**\n"
+        f"🔍 Channel: {ch1.mention}\n"
+        f"💰 Channel: {ch2.mention}\n\n"
+        "Udah estetik banget, tinggal suruh member cobain! 🌸"
+    )
+    await interaction.followup.send(embed=done, ephemeral=True)
 
 bot.run(os.getenv("DISCORD_TOKEN"))
