@@ -446,7 +446,8 @@ async def setup_store(interaction: discord.Interaction):
     await interaction.followup.send("✅ Berhasil! Channel #🛍️・product, #⭐・vouch, #🧾・order-logs, #⭐・testimoni udah dibuat!\nSekarang ketik `/product` di #🛍️・product!", ephemeral=True)
 
 # ============================================================
-# ========== CHECK AVATAR - CATALOG + RAP / PASARAN ==========
+# ========== CHECK AVATAR - HARGA ASLI (PAS RILIS) ==========
+# ========== + RAP + ANTI DUPLIKAT ==========
 # ============================================================
 
 async def get_rbx_user_id(session, username):
@@ -496,31 +497,46 @@ async def get_rbx_prices_bulk(session, asset_ids):
         pass
     return prices
 
-async def get_rbx_rap(session, asset_id):
-    # RAP = Recent Average Price, harga pasaran Limited
-    # Coba 2 endpoint, ambil yang paling gede / yang ketemu
+async def get_rbx_detail_satu(session, asset_id):
+    # Ambil HARGA ASLI + RAP sekaligus dari 2 API Roblox
+    # Return: (harga_asli, rap)
+    harga_asli = 0
     rap = 0
-    # 1. Resale-data - paling akurat buat Limited
-    try:
-        async with session.get(f"https://economy.roblox.com/v1/assets/{asset_id}/resale-data") as r:
-            if r.status == 200:
-                data = await r.json()
-                v = data.get("recentAveragePrice") or 0
-                if v:
-                    rap = max(rap, int(v))
-    except:
-        pass
-    # 2. Economy details - ada LowestPrice + PriceInRobux
+    # 1. Economy Details - PriceInRobux = Harga Asli pas rilis
     try:
         async with session.get(f"https://economy.roblox.com/v2/assets/{asset_id}/details") as r:
             if r.status == 200:
-                data = await r.json()
-                v = data.get("LowestPrice") or data.get("PriceInRobux") or 0
-                if v:
-                    rap = max(rap, int(v))
+                d = await r.json()
+                # PriceInRobux = harga asli, LowestPrice = harga jual termurah sekarang
+                if d.get("PriceInRobux"):
+                    harga_asli = max(harga_asli, int(d["PriceInRobux"]))
+                if d.get("LowestPrice"):
+                    rap = max(rap, int(d["LowestPrice"]))
     except:
         pass
-    return rap
+    # 2. Resale-data - recentAveragePrice = RAP, originalPrice = Harga Asli
+    try:
+        async with session.get(f"https://economy.roblox.com/v1/assets/{asset_id}/resale-data") as r:
+            if r.status == 200:
+                d = await r.json()
+                if d.get("originalPrice"):
+                    harga_asli = max(harga_asli, int(d["originalPrice"]))
+                if d.get("recentAveragePrice"):
+                    rap = max(rap, int(d["recentAveragePrice"]))
+    except:
+        pass
+    # 3. Kalo masih 0, coba Catalog Search - kadang UGC masih ada harganya disini
+    if harga_asli == 0:
+        try:
+            async with session.get(f"https://catalog.roblox.com/v1/catalog/items/{asset_id}/details?itemType=Asset") as r:
+                if r.status == 200:
+                    d = await r.json()
+                    v = d.get("price") or d.get("lowestPrice") or d.get("priceInRobux") or 0
+                    if v:
+                        harga_asli = max(harga_asli, int(v))
+        except:
+            pass
+    return harga_asli, rap
 
 async def kirim_hasil_checkavatar(interaction, username):
     await interaction.response.defer(ephemeral=False)
@@ -554,8 +570,14 @@ async def kirim_hasil_checkavatar(interaction, username):
         except:
             pass
 
+        # Filter + ANTI DUPLIKAT (adidas pack kemarin ke-double)
         tampil_assets = []
+        seen_ids = set()
         for a in assets:
+            aid = a.get("id")
+            if not aid or aid in seen_ids:
+                continue
+            seen_ids.add(aid)
             t = (a.get("assetType") or {}).get("name", "")
             if t in ["Head", "Torso", "LeftArm", "RightArm", "LeftLeg", "RightLeg"]:
                 continue
@@ -564,35 +586,45 @@ async def kirim_hasil_checkavatar(interaction, username):
             tampil_assets = assets
 
         asset_ids = [a.get("id") for a in tampil_assets if a.get("id")]
-        prices = await get_rbx_prices_bulk(session, asset_ids)
+        prices_catalog = await get_rbx_prices_bulk(session, asset_ids)
 
-        # Ambil RAP bareng-bareng biar cepet
-        async def fetch_rap(aid):
-            return await get_rbx_rap(session, aid)
-        raps_list = await asyncio.gather(*[fetch_rap(aid) for aid in asset_ids]) if asset_ids else []
-        raps = {int(aid): int(rap) for aid, rap in zip(asset_ids, raps_list)}
+        # Ambil Harga Asli + RAP bareng-bareng
+        async def fetch_detail(aid):
+            return await get_rbx_detail_satu(session, aid)
+        details_list = await asyncio.gather(*[fetch_detail(aid) for aid in asset_ids]) if asset_ids else []
+        details_map = {int(aid): (int(asli), int(rap)) for aid, (asli, rap) in zip(asset_ids, details_list)}
 
         teks_item = ""
-        total_catalog = 0
+        total_asli = 0
         total_rap = 0
+        total_catalog = 0
         if tampil_assets:
             teks_item = "**Item yang dipake :**\n"
-            for a in tampil_assets[:15]:
+            for a in tampil_assets:
                 aid = a.get("id")
                 nama = a.get("name", f"Item {aid}")
-                harga_catalog = prices.get(int(aid), 0) if aid else 0
-                harga_rap = raps.get(int(aid), 0) if aid else 0
-                # Harga pasaran = RAP kalo ada, kalo ga ada pake harga Catalog
-                harga_pasaran = harga_rap if harga_rap > 0 else harga_catalog
+                harga_catalog = prices_catalog.get(int(aid), 0) if aid else 0
+                harga_asli, harga_rap = details_map.get(int(aid), (0, 0)) if aid else (0, 0)
+                # Harga Asli = yang paling gede dari semua sumber, kalo masih 0 pake Catalog
+                if harga_asli == 0:
+                    harga_asli = harga_catalog
+                # Harga Pasaran = RAP kalo ada, kalo ga ada pake Harga Asli
+                harga_pasaran = harga_rap if harga_rap > 0 else harga_asli
+
+                total_asli += harga_asli
                 total_catalog += harga_catalog
                 total_rap += harga_pasaran
-                # Tampilin yang paling menarik: kalo Limited / RAP beda, tampilin 2-2nya
-                if harga_rap > 0 and harga_rap != harga_catalog:
-                    harga_str = f"{harga_catalog:,} R$ | RAP {harga_rap:,} R$"
-                elif harga_catalog > 0:
-                    harga_str = f"{harga_catalog:,} R$"
+
+                # Tampilan baru: selalu ada harga, ga ada Gratis / Offsale doang lagi
+                if harga_rap > 0 and harga_rap != harga_asli:
+                    harga_str = f"{harga_asli:,} R$ | RAP {harga_rap:,} R$"
+                elif harga_catalog == 0 and harga_asli > 0:
+                    harga_str = f"{harga_asli:,} R$ (Sekarang Gratis / Offsale)"
+                elif harga_asli > 0:
+                    harga_str = f"{harga_asli:,} R$"
                 else:
-                    harga_str = "Gratis / Offsale"
+                    # Bener-bener gratis dari lahir (item free UGC) - tetep kasih label biar jujur
+                    harga_str = "Gratis"
                 teks_item += f"• [{nama}](https://www.roblox.com/catalog/{aid}) - {harga_str}\n"
         else:
             teks_item = "**Item yang dipake :**\nTidak ada item / avatar default."
@@ -606,7 +638,7 @@ async def kirim_hasil_checkavatar(interaction, username):
             f"**User ID :** {user_id}\n"
             f"**📅 Akun Dibuat :** {tanggal_buat}\n"
             f"**⏳ Umur Akun :** {umur_text}\n"
-            f"**💎 Total Harga Catalog :** {total_catalog:,} R$\n"
+            f"**💎 Total Harga Asli :** {total_asli:,} R$\n"
             f"**🔥 Total Harga Pasaran (RAP) :** {total_rap:,} R$\n"
             f"**Bio :** {info.get('description') or 'Tidak ada bio'}"
         ))
