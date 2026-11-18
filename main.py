@@ -446,7 +446,8 @@ async def setup_store(interaction: discord.Interaction):
     await interaction.followup.send("✅ Berhasil! Channel #🛍️・product, #⭐・vouch, #🧾・order-logs, #⭐・testimoni udah dibuat!\nSekarang ketik `/product` di #🛍️・product!", ephemeral=True)
 
 # ============================================================
-# ========== CHECK AVATAR - ESTETIK + PANEL AUTO KE BAWAH (1) ==========
+# ========== CHECK AVATAR - FIX NGEBUG ==========
+# ========== GA AUTO HAPUS, GA PIN SPAM, ITEM DIFILTER ==========
 # ============================================================
 
 async def get_rbx_user_id(session, username):
@@ -475,68 +476,26 @@ async def get_rbx_avatar_details(session, user_id):
     except:
         return []
 
-def find_check_avatar_channel(guild):
-    for ch in guild.text_channels:
-        if "check-avatar" in ch.name.lower():
-            return ch
-    return None
+BUANG_KATA = ["animation", "animasi", "bundle", "billie", "run", "walk", "jump", "climb", "fall", "swim", "idle", "tubuh", "wajah", "torso", "leg", "arm", "head", "face", "smile", "mood", "default", "classic"]
 
-async def refresh_panel_ke_bawah(guild):
-    # OPSI 1: Hapus panel lama, kirim panel baru di paling bawah + pin
-    # Jadi panel SELALU di bawah, ga pernah ketimbun hasil cek
-    ch = find_check_avatar_channel(guild)
-    if not ch:
-        return
-    try:
-        async for msg in ch.history(limit=30):
-            if msg.author == guild.me:
-                # Jangan hapus hasil cek, cuma hapus panel lama
-                # Panel lama itu yang ada tombol CEK AVATAR
-                if "CHECK AVATAR" in (msg.content or "") or (msg.components and len(msg.components) > 0):
-                    # Cek apakah ini panel: kita hapus semua pesan bot yang isinya panel
-                    # Hasil cek juga dari bot, jadi kita bedain pake teks "Halo, selamat datang"
-                    try:
-                        # Ambil teks dari container / embed
-                        is_panel = False
-                        if msg.embeds:
-                            for e in msg.embeds:
-                                if "CHECK AVATAR" in (e.title or ""):
-                                    is_panel = True
-                        # Untuk LayoutView, kita cek lewat flags / content kosong + ada view
-                        # Simplenya: hapus pesan bot yang paling lama yang isinya panel
-                        # Kita hapus semua pesan bot di 30 pesan terakhir yang BUKAN hasil cek
-                        # Hasil cek ada tulisan "Username" + "Item Yang Dipake"
-                        # Panel ada tulisan "Halo, selamat datang"
-                        # Karena LayoutView ga kebaca di msg.content, kita pake cara aman:
-                        # Hapus 1 panel lama aja (pesan bot paling atas)
-                        pass
-                    except:
-                        pass
-        # Cara paling aman & simple: hapus SEMUA pesan bot lama, lalu kirim panel baru
-        # Hasil cek juga kehapus, tapi itu oke biar channel bersih & panel selalu di bawah
-        async for msg in ch.history(limit=50):
-            if msg.author == guild.me:
-                try:
-                    await msg.delete()
-                except:
-                    pass
-        try:
-            pins = await ch.pins()
-            for p in pins:
-                if p.author == guild.me:
-                    try:
-                        await p.unpin()
-                    except:
-                        pass
-        except:
-            pass
-        msg = await ch.send(view=CheckAvatarPanelLayout())
-        try:
-            await msg.pin()
-        except:
-            pass
-    except Exception as e:
-        print(f"refresh panel gagal: {e}")
+def filter_item_bagus(assets):
+    hasil = []
+    seen = set()
+    for a in assets:
+        aid = a.get("id")
+        nama = (a.get("name") or "").strip()
+        if not aid or not nama:
+            continue
+        nama_low = nama.lower()
+        if any(k in nama_low for k in BUANG_KATA):
+            continue
+        if nama_low in seen:
+            continue
+        seen.add(nama_low)
+        hasil.append(a)
+        if len(hasil) >= 10:
+            break
+    return hasil
 
 async def kirim_hasil_checkavatar(interaction, username):
     await interaction.response.defer(ephemeral=False)
@@ -549,28 +508,16 @@ async def kirim_hasil_checkavatar(interaction, username):
         avatar_url = await get_rbx_avatar(session, user_id)
         assets = await get_rbx_avatar_details(session, user_id)
 
-        tampil_assets = []
-        seen_names = set()
-        for a in assets:
-            aid = a.get("id")
-            if not aid:
-                continue
-            nama_key = (a.get("name") or "").strip().lower()
-            if nama_key in seen_names:
-                continue
-            seen_names.add(nama_key)
-            tampil_assets.append(a)
-        if not tampil_assets:
-            tampil_assets = assets
+        tampil_assets = filter_item_bagus(assets)
 
         if tampil_assets:
-            teks_item = "### 👗  Item Yang Dipake\n"
+            teks_item = "### 👗 Item Yang Dipake\n"
             for a in tampil_assets:
                 aid = a.get("id")
                 nama = a.get("name", f"Item {aid}")
-                teks_item += f"›  [{nama}](https://www.roblox.com/catalog/{aid})\n"
+                teks_item += f"> [{nama}](https://www.roblox.com/catalog/{aid})\n"
         else:
-            teks_item = "### 👗  Item Yang Dipake\n›  Tidak ada item / avatar default."
+            teks_item = "### 👗 Item Yang Dipake\n> Avatar default / item tidak terbaca."
 
         bio = info.get('description') or 'Tidak ada bio'
         if len(bio) > 120:
@@ -579,13 +526,13 @@ async def kirim_hasil_checkavatar(interaction, username):
         view = discord.ui.LayoutView()
         container = discord.ui.Container(accent_color=0xFF69B4)
         container.add_item(discord.ui.TextDisplay(
-            f"##  ✦  MIPI STORE  •  CHECK AVATAR\n"
-            f"╭  ─────────────  ✦  ─────────────  ╮\n"
-            f"**👤  Username**  :  `{info.get('name')}`\n"
-            f"**✨  Display**  :  `{info.get('displayName')}`\n"
-            f"**🆔  User ID**  :  `{user_id}`\n"
-            f"**📝  Bio**  :  {bio}\n"
-            f"╰  ─────────────  ✦  ─────────────  ╯\n"
+            f"## ✦ MIPI STORE • CHECK AVATAR\n"
+            f"✦ ───────────────────── ✦\n"
+            f"**👤 Username :** `{info.get('name')}`\n"
+            f"**✨ Display :** `{info.get('displayName')}`\n"
+            f"**🆔 User ID :** `{user_id}`\n"
+            f"**📝 Bio :** {bio}\n"
+            f"✦ ───────────────────── ✦\n"
             f"Di-cek sama {interaction.user.mention}"
         ))
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
@@ -595,18 +542,13 @@ async def kirim_hasil_checkavatar(interaction, username):
         container.add_item(discord.ui.TextDisplay(teks_item))
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
         row = discord.ui.ActionRow()
-        row.add_item(discord.ui.Button(label="👤  Buka Profil Roblox", style=discord.ButtonStyle.link, url=f"https://www.roblox.com/users/{user_id}/profile"))
-        row.add_item(discord.ui.Button(label="🎮  Lihat Avatar 3D", style=discord.ButtonStyle.link, url=f"https://www.roblox.com/catalog/{tampil_assets[0]['id']}" if tampil_assets else f"https://www.roblox.com/users/{user_id}/profile"))
+        row.add_item(discord.ui.Button(label="Buka Profil Roblox", style=discord.ButtonStyle.link, url=f"https://www.roblox.com/users/{user_id}/profile", emoji="👤"))
         container.add_item(row)
-        container.add_item(discord.ui.TextDisplay("-#  ✦  MIPI STORE  •  Check Avatar  •  Klik nama item / profil buat buka di Roblox"))
+        container.add_item(discord.ui.TextDisplay("-# ✦ MIPI STORE • Check Avatar • Panel ada di pinned, tinggal klik 📌"))
         view.add_item(container)
-
-        # Kirim hasil di channel yang sama, lalu panel auto ke bawah
         await interaction.followup.send(view=view)
-        # Panel auto ke bawah + pin lagi biar ga tenggelam
-        await refresh_panel_ke_bawah(interaction.guild)
 
-class CheckAvatarModal(discord.ui.Modal, title="✨ Check Avatar Roblox"):
+class CheckAvatarModal(discord.ui.Modal, title="Check Avatar Roblox"):
     username_input = discord.ui.TextInput(label="Username Roblox", placeholder="Contoh: 1mrafii", required=True, max_length=20)
     async def on_submit(self, interaction: discord.Interaction):
         await kirim_hasil_checkavatar(interaction, self.username_input.value.strip())
@@ -632,35 +574,36 @@ class CheckAvatarPanelLayout(discord.ui.LayoutView):
         super().__init__(timeout=None)
         container = discord.ui.Container(accent_color=0xFF69B4)
         container.add_item(discord.ui.TextDisplay(
-            f"##  ✦  MIPI STORE  •  CHECK AVATAR\n"
-            f"╭  ─────────────  ✦  ─────────────  ╮\n"
-            f"**Halo, selamat datang di Check Avatar!**  💖\n\n"
+            f"## ✦ MIPI STORE • CHECK AVATAR\n"
+            f"✦ ───────────────────── ✦\n"
+            f"**Halo, selamat datang di Check Avatar!** 💖\n\n"
             f"Liat avatar Roblox kamu di sini, lengkap sama item yang dipake.\n\n"
-            f"**✨  Cara Pakai :**\n"
-            f"›  Pencet tombol pink di bawah\n"
-            f"›  Ketik username Roblox kamu\n"
-            f"›  Kirim, langsung muncul avatar + item kamu\n\n"
-            f"╰  ─────────────  ✦  ─────────────  ╯"
+            f"**✨ Cara Pakai :**\n"
+            f"> Pencet tombol di bawah\n"
+            f"> Ketik username Roblox kamu\n"
+            f"> Kirim, langsung muncul avatar + item kamu\n"
+            f"✦ ───────────────────── ✦\n"
+            f"📌 Panel ini udah di-pin, kalo ketimbun klik 📌 di atas ya!"
         ))
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
         row_top = discord.ui.ActionRow()
-        row_top.add_item(discord.ui.Button(label="✦  CHECK AVATAR  ✦", style=discord.ButtonStyle.secondary, custom_id="cat_avatar", disabled=True))
+        row_top.add_item(discord.ui.Button(label="CHECK AVATAR", style=discord.ButtonStyle.secondary, custom_id="cat_avatar", disabled=True, emoji="✦"))
         container.add_item(row_top)
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
         container.add_item(discord.ui.TextDisplay(
-            f"**Kategori :**  🔍  Check Avatar\n"
-            f"**Fungsi :**  Liat avatar + item yang dipake\n"
-            f"**Status :**  🟢  Online  •  Aman  •  Cepat"
+            f"**Kategori :** 🔍 Check Avatar\n"
+            f"**Fungsi :** Liat avatar + item yang dipake\n"
+            f"**Status :** 🟢 Online • Aman • Cepat"
         ))
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
         row_main = discord.ui.ActionRow()
-        btn = discord.ui.Button(label="🔍  CEK AVATAR", style=discord.ButtonStyle.primary, emoji="🔍", custom_id="cek_avatar_pencet")
+        btn = discord.ui.Button(label="CEK AVATAR", style=discord.ButtonStyle.primary, emoji="🔍", custom_id="cek_avatar_pencet")
         async def cek_cb(interaction: discord.Interaction):
             await interaction.response.send_modal(CheckAvatarModal())
         btn.callback = cek_cb
         row_main.add_item(btn)
         container.add_item(row_main)
-        container.add_item(discord.ui.TextDisplay("-#  ✦  MIPI STORE  •  Tinggal Pencet Aja!  •  Panel ini auto ke bawah, ga akan tenggelam ✨"))
+        container.add_item(discord.ui.TextDisplay("-# ✦ MIPI STORE • Tinggal Pencet Aja!"))
         self.add_item(container)
 
 class CheckRbxPanelLayout(discord.ui.LayoutView):
@@ -668,35 +611,35 @@ class CheckRbxPanelLayout(discord.ui.LayoutView):
         super().__init__(timeout=None)
         container = discord.ui.Container(accent_color=0xFFD700)
         container.add_item(discord.ui.TextDisplay(
-            f"##  ✦  MIPI STORE  •  CEK RBX\n"
-            f"╭  ─────────────  ✦  ─────────────  ╮\n"
-            f"**Halo, mau cek Robux kamu?**  💰\n\n"
+            f"## ✦ MIPI STORE • CEK RBX\n"
+            f"✦ ───────────────────── ✦\n"
+            f"**Halo, mau cek Robux kamu?** 💰\n\n"
             f"Cek Robux kamu udah masuk / masih pending di sini.\n\n"
-            f"**✨  Cara Pakai :**\n"
-            f"›  Pencet tombol kuning di bawah\n"
-            f"›  Ketik username + link gamepass\n"
-            f"›  Kirim, langsung kecek\n\n"
-            f"╰  ─────────────  ✦  ─────────────  ╯"
+            f"**✨ Cara Pakai :**\n"
+            f"> Pencet tombol di bawah\n"
+            f"> Ketik username + link gamepass\n"
+            f"> Kirim, langsung kecek\n"
+            f"✦ ───────────────────── ✦"
         ))
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
         row_top = discord.ui.ActionRow()
-        row_top.add_item(discord.ui.Button(label="✦  CEK RBX / GAMEPASS  ✦", style=discord.ButtonStyle.secondary, custom_id="cat_rbx", disabled=True))
+        row_top.add_item(discord.ui.Button(label="CEK RBX / GAMEPASS", style=discord.ButtonStyle.secondary, custom_id="cat_rbx", disabled=True, emoji="✦"))
         container.add_item(row_top)
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
         container.add_item(discord.ui.TextDisplay(
-            f"**Kategori :**  💰  Cek RBX / Gamepass\n"
-            f"**Fungsi :**  Cek pending Robux\n"
-            f"**Status :**  🟢  Online"
+            f"**Kategori :** 💰 Cek RBX / Gamepass\n"
+            f"**Fungsi :** Cek pending Robux\n"
+            f"**Status :** 🟢 Online"
         ))
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
         row_main = discord.ui.ActionRow()
-        btn = discord.ui.Button(label="💰  CEK RBX SEKARANG", style=discord.ButtonStyle.success, emoji="💰", custom_id="cek_rbx_pencet")
+        btn = discord.ui.Button(label="CEK RBX", style=discord.ButtonStyle.success, emoji="💰", custom_id="cek_rbx_pencet")
         async def rbx_cb(interaction: discord.Interaction):
             await interaction.response.send_modal(CheckRbxModal())
         btn.callback = rbx_cb
         row_main.add_item(btn)
         container.add_item(row_main)
-        container.add_item(discord.ui.TextDisplay("-#  ✦  MIPI STORE  •  Tinggal Pencet Aja!"))
+        container.add_item(discord.ui.TextDisplay("-# ✦ MIPI STORE • Tinggal Pencet Aja!"))
         self.add_item(container)
 
 @bot.tree.command(name="checkavatar", description="Cek avatar Roblox")
@@ -740,6 +683,6 @@ async def setup_cek(interaction: discord.Interaction):
     except:
         pass
     await ch2.send(view=CheckRbxPanelLayout())
-    await interaction.followup.send(f"✅ Berhasil! {ch1.mention} + {ch2.mention} udah dibuat!\nPanel di {ch1.mention} udah di-pin + auto ke bawah tiap ada yang cek, jadi ga akan tenggelam lagi!", ephemeral=True)
+    await interaction.followup.send(f"✅ Berhasil! {ch1.mention} + {ch2.mention} udah dibuat!\nPanel di {ch1.mention} cuma di-pin 1x, ga auto hapus lagi jadi ga ngebug!", ephemeral=True)
 
 bot.run(os.getenv("DISCORD_TOKEN"))
