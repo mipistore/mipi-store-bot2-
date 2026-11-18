@@ -446,8 +446,8 @@ async def setup_store(interaction: discord.Interaction):
     await interaction.followup.send("✅ Berhasil! Channel #🛍️・product, #⭐・vouch, #🧾・order-logs, #⭐・testimoni udah dibuat!\nSekarang ketik `/product` di #🛍️・product!", ephemeral=True)
 
 # ============================================================
-# ========== CHECK AVATAR - HARGA ASLI (PAS RILIS) ==========
-# ========== + RAP + ANTI DUPLIKAT ==========
+# ========== CHECK AVATAR - SAMA KAYAK TOTAL BIAYA ROBLOX ==========
+# ========== 768 R$ - HARGA CATALOG SEKARANG ==========
 # ============================================================
 
 async def get_rbx_user_id(session, username):
@@ -476,67 +476,52 @@ async def get_rbx_avatar_details(session, user_id):
     except:
         return []
 
-async def get_rbx_prices_bulk(session, asset_ids):
-    prices = {}
-    if not asset_ids:
-        return prices
+async def get_harga_catalog_sekarang(session, asset_id):
+    # Ini yang dipake Roblox buat ngitung "Total Biaya" di menu Outfit
+    # Coba 4 sumber, ambil yang ketemu dulu
+    # 1. Catalog API - Asset (paling sama kayak web Roblox)
     try:
-        payload = {"items": [{"id": int(a), "itemType": "Asset"} for a in asset_ids]}
-        async with session.post("https://catalog.roblox.com/v1/catalog/items/details", json=payload) as r:
-            data = await r.json()
-            for d in data.get("data", []):
-                iid = d.get("id") or d.get("itemTargetId") or d.get("collectibleItemId")
-                harga = d.get("price") or d.get("lowestPrice") or d.get("priceInRobux") or 0
-                try:
-                    harga = int(harga)
-                except:
-                    harga = 0
-                if iid:
-                    prices[int(iid)] = harga
+        async with session.post("https://catalog.roblox.com/v1/catalog/items/details", json={"items": [{"id": int(asset_id), "itemType": "Asset"}]}) as r:
+            if r.status == 200:
+                d = await r.json()
+                for item in d.get("data", []):
+                    v = item.get("price") or item.get("lowestPrice") or item.get("priceInRobux") or 0
+                    if v:
+                        return int(v)
     except:
         pass
-    return prices
-
-async def get_rbx_detail_satu(session, asset_id):
-    # Ambil HARGA ASLI + RAP sekaligus dari 2 API Roblox
-    # Return: (harga_asli, rap)
-    harga_asli = 0
-    rap = 0
-    # 1. Economy Details - PriceInRobux = Harga Asli pas rilis
+    # 2. Catalog API - Collectible (buat item Limited / UGC Collectible)
+    try:
+        async with session.post("https://catalog.roblox.com/v1/catalog/items/details", json={"items": [{"id": int(asset_id), "itemType": "Collectible"}]}) as r:
+            if r.status == 200:
+                d = await r.json()
+                for item in d.get("data", []):
+                    v = item.get("price") or item.get("lowestPrice") or item.get("lowestResalePrice") or 0
+                    if v:
+                        return int(v)
+    except:
+        pass
+    # 3. Economy Details - LowestPrice / PriceInRobux
     try:
         async with session.get(f"https://economy.roblox.com/v2/assets/{asset_id}/details") as r:
             if r.status == 200:
                 d = await r.json()
-                # PriceInRobux = harga asli, LowestPrice = harga jual termurah sekarang
-                if d.get("PriceInRobux"):
-                    harga_asli = max(harga_asli, int(d["PriceInRobux"]))
-                if d.get("LowestPrice"):
-                    rap = max(rap, int(d["LowestPrice"]))
+                v = d.get("LowestPrice") or d.get("PriceInRobux") or 0
+                if v:
+                    return int(v)
     except:
         pass
-    # 2. Resale-data - recentAveragePrice = RAP, originalPrice = Harga Asli
+    # 4. Resale - RAP / originalPrice (last resort biar ga 0 terus)
     try:
         async with session.get(f"https://economy.roblox.com/v1/assets/{asset_id}/resale-data") as r:
             if r.status == 200:
                 d = await r.json()
-                if d.get("originalPrice"):
-                    harga_asli = max(harga_asli, int(d["originalPrice"]))
-                if d.get("recentAveragePrice"):
-                    rap = max(rap, int(d["recentAveragePrice"]))
+                v = d.get("recentAveragePrice") or d.get("originalPrice") or 0
+                if v:
+                    return int(v)
     except:
         pass
-    # 3. Kalo masih 0, coba Catalog Search - kadang UGC masih ada harganya disini
-    if harga_asli == 0:
-        try:
-            async with session.get(f"https://catalog.roblox.com/v1/catalog/items/{asset_id}/details?itemType=Asset") as r:
-                if r.status == 200:
-                    d = await r.json()
-                    v = d.get("price") or d.get("lowestPrice") or d.get("priceInRobux") or 0
-                    if v:
-                        harga_asli = max(harga_asli, int(v))
-        except:
-            pass
-    return harga_asli, rap
+    return 0
 
 async def kirim_hasil_checkavatar(interaction, username):
     await interaction.response.defer(ephemeral=False)
@@ -570,14 +555,17 @@ async def kirim_hasil_checkavatar(interaction, username):
         except:
             pass
 
-        # Filter + ANTI DUPLIKAT (adidas pack kemarin ke-double)
+        # Filter + ANTI DUPLIKAT pake NAMA (biar adidas ga double lagi)
         tampil_assets = []
-        seen_ids = set()
+        seen_names = set()
         for a in assets:
             aid = a.get("id")
-            if not aid or aid in seen_ids:
+            if not aid:
                 continue
-            seen_ids.add(aid)
+            nama_key = (a.get("name") or "").strip().lower()
+            if nama_key in seen_names:
+                continue
+            seen_names.add(nama_key)
             t = (a.get("assetType") or {}).get("name", "")
             if t in ["Head", "Torso", "LeftArm", "RightArm", "LeftLeg", "RightLeg"]:
                 continue
@@ -585,45 +573,19 @@ async def kirim_hasil_checkavatar(interaction, username):
         if not tampil_assets:
             tampil_assets = assets
 
-        asset_ids = [a.get("id") for a in tampil_assets if a.get("id")]
-        prices_catalog = await get_rbx_prices_bulk(session, asset_ids)
-
-        # Ambil Harga Asli + RAP bareng-bareng
-        async def fetch_detail(aid):
-            return await get_rbx_detail_satu(session, aid)
-        details_list = await asyncio.gather(*[fetch_detail(aid) for aid in asset_ids]) if asset_ids else []
-        details_map = {int(aid): (int(asli), int(rap)) for aid, (asli, rap) in zip(asset_ids, details_list)}
-
+        # Ambil harga pake cara yang sama kayak Roblox Outfit (Total Biaya 768)
         teks_item = ""
-        total_asli = 0
-        total_rap = 0
-        total_catalog = 0
+        total = 0
         if tampil_assets:
             teks_item = "**Item yang dipake :**\n"
             for a in tampil_assets:
                 aid = a.get("id")
                 nama = a.get("name", f"Item {aid}")
-                harga_catalog = prices_catalog.get(int(aid), 0) if aid else 0
-                harga_asli, harga_rap = details_map.get(int(aid), (0, 0)) if aid else (0, 0)
-                # Harga Asli = yang paling gede dari semua sumber, kalo masih 0 pake Catalog
-                if harga_asli == 0:
-                    harga_asli = harga_catalog
-                # Harga Pasaran = RAP kalo ada, kalo ga ada pake Harga Asli
-                harga_pasaran = harga_rap if harga_rap > 0 else harga_asli
-
-                total_asli += harga_asli
-                total_catalog += harga_catalog
-                total_rap += harga_pasaran
-
-                # Tampilan baru: selalu ada harga, ga ada Gratis / Offsale doang lagi
-                if harga_rap > 0 and harga_rap != harga_asli:
-                    harga_str = f"{harga_asli:,} R$ | RAP {harga_rap:,} R$"
-                elif harga_catalog == 0 and harga_asli > 0:
-                    harga_str = f"{harga_asli:,} R$ (Sekarang Gratis / Offsale)"
-                elif harga_asli > 0:
-                    harga_str = f"{harga_asli:,} R$"
+                harga = await get_harga_catalog_sekarang(session, aid) if aid else 0
+                total += harga
+                if harga > 0:
+                    harga_str = f"{harga:,} R$"
                 else:
-                    # Bener-bener gratis dari lahir (item free UGC) - tetep kasih label biar jujur
                     harga_str = "Gratis"
                 teks_item += f"• [{nama}](https://www.roblox.com/catalog/{aid}) - {harga_str}\n"
         else:
@@ -638,8 +600,7 @@ async def kirim_hasil_checkavatar(interaction, username):
             f"**User ID :** {user_id}\n"
             f"**📅 Akun Dibuat :** {tanggal_buat}\n"
             f"**⏳ Umur Akun :** {umur_text}\n"
-            f"**💎 Total Harga Asli :** {total_asli:,} R$\n"
-            f"**🔥 Total Harga Pasaran (RAP) :** {total_rap:,} R$\n"
+            f"**💎 Total Harga Avatar :** {total:,} R$\n"
             f"**Bio :** {info.get('description') or 'Tidak ada bio'}"
         ))
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
