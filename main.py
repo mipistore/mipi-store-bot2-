@@ -233,14 +233,6 @@ class TicketActionView(discord.ui.View):
         await interaction.response.send_message("Ticket akan ditutup dalam 5 detik...")
         await interaction.channel.delete()
 
-class CloseTicketView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-    @discord.ui.button(label="🔒 Close Ticket", style=discord.ButtonStyle.red, custom_id="close_ticket2")
-    async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("Ticket akan ditutup dalam 5 detik...")
-        await interaction.channel.delete()
-
 class ReviewModal(discord.ui.Modal):
     def __init__(self, channel_id):
         super().__init__(title="Kasih Rating & Ulasan")
@@ -267,24 +259,8 @@ class ReviewModal(discord.ui.Modal):
         jumlah = data.get("jumlah", "1 Unit")
         DATA["order_count"] = DATA.get("order_count", 0) + 1
         order_id = f"ORDER-{DATA['order_count']:06d}"
-        order = {
-            "order_id": order_id,
-            "customer_mention": customer_mention,
-            "avatar": avatar,
-            "produk": produk,
-            "harga": harga,
-            "roblox_user": roblox_user,
-            "jumlah": jumlah,
-            "tanggal": tanggal,
-        }
-        review = {
-            "customer_mention": customer_mention,
-            "avatar": avatar,
-            "produk": produk,
-            "rating": rating,
-            "tanggal": tanggal,
-            "ulasan": ulasan,
-        }
+        order = {"order_id": order_id, "customer_mention": customer_mention, "avatar": avatar, "produk": produk, "harga": harga, "roblox_user": roblox_user, "jumlah": jumlah, "tanggal": tanggal}
+        review = {"customer_mention": customer_mention, "avatar": avatar, "produk": produk, "rating": rating, "tanggal": tanggal, "ulasan": ulasan}
         DATA.setdefault("orders", []).append(order)
         DATA.setdefault("reviews", []).append(review)
         save_data(DATA)
@@ -470,8 +446,7 @@ async def setup_store(interaction: discord.Interaction):
     await interaction.followup.send("✅ Berhasil! Channel #🛍️・product, #⭐・vouch, #🧾・order-logs, #⭐・testimoni udah dibuat!\nSekarang ketik `/product` di #🛍️・product!", ephemeral=True)
 
 # ============================================================
-# ========== CHECK AVATAR + CEK RBX - GAYA ISSA PISAH ==========
-# ========== FIX HARGA 0 - POST + ECONOMY API ==========
+# ========== CHECK AVATAR - CATALOG + RAP / PASARAN ==========
 # ============================================================
 
 async def get_rbx_user_id(session, username):
@@ -492,35 +467,60 @@ async def get_rbx_avatar(session, user_id):
             return data["data"][0]["imageUrl"]
         return None
 
-async def get_rbx_wearing(session, user_id):
-    async with session.get(f"https://avatar.roblox.com/v1/users/{user_id}/currently-wearing") as r:
-        data = await r.json()
-        return data.get("assetIds", [])
-
-async def get_rbx_asset(session, asset_id):
-    # 1. Catalog API yang bener - harus POST, bukan GET
+async def get_rbx_avatar_details(session, user_id):
     try:
-        async with session.post(
-            "https://catalog.roblox.com/v1/catalog/items/details",
-            json={"items": [{"id": int(asset_id), "itemType": "Asset"}]}
-        ) as r:
+        async with session.get(f"https://avatar.roblox.com/v1/users/{user_id}/avatar") as r:
             data = await r.json()
-            if data.get("data"):
-                d = data["data"][0]
+            return data.get("assets", [])
+    except:
+        return []
+
+async def get_rbx_prices_bulk(session, asset_ids):
+    prices = {}
+    if not asset_ids:
+        return prices
+    try:
+        payload = {"items": [{"id": int(a), "itemType": "Asset"} for a in asset_ids]}
+        async with session.post("https://catalog.roblox.com/v1/catalog/items/details", json=payload) as r:
+            data = await r.json()
+            for d in data.get("data", []):
+                iid = d.get("id") or d.get("itemTargetId") or d.get("collectibleItemId")
                 harga = d.get("price") or d.get("lowestPrice") or d.get("priceInRobux") or 0
-                return {"name": d.get("name", f"Item {asset_id}"), "price": int(harga) if harga else 0}
+                try:
+                    harga = int(harga)
+                except:
+                    harga = 0
+                if iid:
+                    prices[int(iid)] = harga
     except:
         pass
-    # 2. Fallback - Economy API, paling akurat buat Limited / Offsale
+    return prices
+
+async def get_rbx_rap(session, asset_id):
+    # RAP = Recent Average Price, harga pasaran Limited
+    # Coba 2 endpoint, ambil yang paling gede / yang ketemu
+    rap = 0
+    # 1. Resale-data - paling akurat buat Limited
+    try:
+        async with session.get(f"https://economy.roblox.com/v1/assets/{asset_id}/resale-data") as r:
+            if r.status == 200:
+                data = await r.json()
+                v = data.get("recentAveragePrice") or 0
+                if v:
+                    rap = max(rap, int(v))
+    except:
+        pass
+    # 2. Economy details - ada LowestPrice + PriceInRobux
     try:
         async with session.get(f"https://economy.roblox.com/v2/assets/{asset_id}/details") as r:
-            data = await r.json()
-            if data.get("Name"):
-                harga = data.get("PriceInRobux") or data.get("LowestPrice") or 0
-                return {"name": data.get("Name"), "price": int(harga) if harga else 0}
+            if r.status == 200:
+                data = await r.json()
+                v = data.get("LowestPrice") or data.get("PriceInRobux") or 0
+                if v:
+                    rap = max(rap, int(v))
     except:
         pass
-    return {"name": f"Item {asset_id}", "price": 0}
+    return rap
 
 async def kirim_hasil_checkavatar(interaction, username):
     await interaction.response.defer(ephemeral=False)
@@ -531,9 +531,8 @@ async def kirim_hasil_checkavatar(interaction, username):
             return
         info = await get_rbx_user_info(session, user_id)
         avatar_url = await get_rbx_avatar(session, user_id)
-        wearing = await get_rbx_wearing(session, user_id)
+        assets = await get_rbx_avatar_details(session, user_id)
 
-        # === UMUR AKUN - OTOMATIS ===
         umur_text = "Tidak diketahui"
         tanggal_buat = "-"
         try:
@@ -555,17 +554,46 @@ async def kirim_hasil_checkavatar(interaction, username):
         except:
             pass
 
-        # === TOTAL HARGA AVATAR - OTOMATIS ===
+        tampil_assets = []
+        for a in assets:
+            t = (a.get("assetType") or {}).get("name", "")
+            if t in ["Head", "Torso", "LeftArm", "RightArm", "LeftLeg", "RightLeg"]:
+                continue
+            tampil_assets.append(a)
+        if not tampil_assets:
+            tampil_assets = assets
+
+        asset_ids = [a.get("id") for a in tampil_assets if a.get("id")]
+        prices = await get_rbx_prices_bulk(session, asset_ids)
+
+        # Ambil RAP bareng-bareng biar cepet
+        async def fetch_rap(aid):
+            return await get_rbx_rap(session, aid)
+        raps_list = await asyncio.gather(*[fetch_rap(aid) for aid in asset_ids]) if asset_ids else []
+        raps = {int(aid): int(rap) for aid, rap in zip(asset_ids, raps_list)}
+
         teks_item = ""
-        total_harga = 0
-        if wearing:
+        total_catalog = 0
+        total_rap = 0
+        if tampil_assets:
             teks_item = "**Item yang dipake :**\n"
-            for aid in wearing[:10]:
-                det = await get_rbx_asset(session, aid)
-                harga_item = det.get('price', 0) or 0
-                total_harga += harga_item
-                harga_str = f"{harga_item:,} R$" if harga_item > 0 else "Gratis / Offsale"
-                teks_item += f"• [{det.get('name', f'Item {aid}')}](https://www.roblox.com/catalog/{aid}) - {harga_str}\n"
+            for a in tampil_assets[:15]:
+                aid = a.get("id")
+                nama = a.get("name", f"Item {aid}")
+                harga_catalog = prices.get(int(aid), 0) if aid else 0
+                harga_rap = raps.get(int(aid), 0) if aid else 0
+                # Harga pasaran = RAP kalo ada, kalo ga ada pake harga Catalog
+                harga_pasaran = harga_rap if harga_rap > 0 else harga_catalog
+                total_catalog += harga_catalog
+                total_rap += harga_pasaran
+                # Tampilin yang paling menarik: kalo Limited / RAP beda, tampilin 2-2nya
+                if harga_rap > 0 and harga_rap != harga_catalog:
+                    harga_str = f"{harga_catalog:,} R$ | RAP {harga_rap:,} R$"
+                elif harga_catalog > 0:
+                    harga_str = f"{harga_catalog:,} R$"
+                else:
+                    harga_str = "Gratis / Offsale"
+                teks_item += f"• [{nama}](https://www.roblox.com/catalog/{aid}) - {harga_str}\n"
         else:
             teks_item = "**Item yang dipake :**\nTidak ada item / avatar default."
 
@@ -578,7 +606,8 @@ async def kirim_hasil_checkavatar(interaction, username):
             f"**User ID :** {user_id}\n"
             f"**📅 Akun Dibuat :** {tanggal_buat}\n"
             f"**⏳ Umur Akun :** {umur_text}\n"
-            f"**💎 Total Harga Avatar :** {total_harga:,} R$\n"
+            f"**💎 Total Harga Catalog :** {total_catalog:,} R$\n"
+            f"**🔥 Total Harga Pasaran (RAP) :** {total_rap:,} R$\n"
             f"**Bio :** {info.get('description') or 'Tidak ada bio'}"
         ))
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
@@ -625,12 +654,7 @@ class CheckAvatarPanelLayout(discord.ui.LayoutView):
         row_top.add_item(discord.ui.Button(label="CHECK AVATAR", style=discord.ButtonStyle.secondary, custom_id="cat_avatar", disabled=True, emoji="🔍"))
         container.add_item(row_top)
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
-        container.add_item(discord.ui.TextDisplay(
-            "**Kategori :** 🔍 CHECK AVATAR\n"
-            "**Cara Pakai :**\n"
-            "Pencet tombol di bawah, ketik username, kirim.\n"
-            "Langsung muncul avatar + umur akun + total harga avatar."
-        ))
+        container.add_item(discord.ui.TextDisplay("**Kategori :** 🔍 CHECK AVATAR\n**Cara Pakai :**\nPencet tombol di bawah, ketik username, kirim.\nLangsung muncul avatar + umur akun + total harga avatar."))
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
         row_main = discord.ui.ActionRow()
         btn = discord.ui.Button(label="CEK AVATAR", style=discord.ButtonStyle.primary, emoji="🔍", custom_id="cek_avatar_pencet")
@@ -651,12 +675,7 @@ class CheckRbxPanelLayout(discord.ui.LayoutView):
         row_top.add_item(discord.ui.Button(label="CEK RBX / GAMEPASS", style=discord.ButtonStyle.secondary, custom_id="cat_rbx", disabled=True, emoji="💰"))
         container.add_item(row_top)
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
-        container.add_item(discord.ui.TextDisplay(
-            "**Kategori :** 💰 CEK RBX / GAMEPASS\n"
-            "**Cara Pakai :**\n"
-            "Pencet tombol di bawah, ketik username + link gamepass.\n"
-            "Cek Robux kamu udah masuk / masih pending."
-        ))
+        container.add_item(discord.ui.TextDisplay("**Kategori :** 💰 CEK RBX / GAMEPASS\n**Cara Pakai :**\nPencet tombol di bawah, ketik username + link gamepass.\nCek Robux kamu udah masuk / masih pending."))
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
         row_main = discord.ui.ActionRow()
         btn = discord.ui.Button(label="CEK RBX", style=discord.ButtonStyle.success, emoji="💰", custom_id="cek_rbx_pencet")
@@ -676,10 +695,7 @@ async def cekrbx(interaction: discord.Interaction, username: str = None, link_ga
     if not username:
         await interaction.response.send_modal(CheckRbxModal())
         return
-    await interaction.response.send_message(
-        f"## Mipi Store CHECK\n**Username :** {username}\n**Gamepass :** {link_gamepass or 'Tidak diisi'}\n\nCek di Roblox > Revenue > Pending Sales ya!\nRoblox hold Robux **3 - 7 hari**, itu normal.",
-        ephemeral=True
-    )
+    await interaction.response.send_message(f"## Mipi Store CHECK\n**Username :** {username}\n**Gamepass :** {link_gamepass or 'Tidak diisi'}\n\nCek di Roblox > Revenue > Pending Sales ya!\nRoblox hold Robux **3 - 7 hari**, itu normal.", ephemeral=True)
 
 @bot.tree.command(name="checkavatar-panel", description="Kirim panel cek avatar (Owner only)")
 async def checkavatar_panel(interaction: discord.Interaction):
