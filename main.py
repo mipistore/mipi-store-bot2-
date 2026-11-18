@@ -15,7 +15,6 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 DATA_FILE = "mipi_data.json"
 
-# --- ID CHANNEL ASLI KAMU ---
 VOUCH_CHANNEL_ID = 1571783490297528420
 ORDER_LOGS_CHANNEL_ID = 1571783908058730547
 TESTIMONI_CHANNEL_ID = 1571784387438055515
@@ -472,7 +471,7 @@ async def setup_store(interaction: discord.Interaction):
 
 # ============================================================
 # ========== CHECK AVATAR + CEK RBX - GAYA ISSA PISAH ==========
-# ========== TANPA PREV/NEXT, TANPA SISA ROBUX ==========
+# ========== FIX HARGA 0 - POST + ECONOMY API ==========
 # ============================================================
 
 async def get_rbx_user_id(session, username):
@@ -499,14 +498,29 @@ async def get_rbx_wearing(session, user_id):
         return data.get("assetIds", [])
 
 async def get_rbx_asset(session, asset_id):
-    async with session.get(f"https://catalog.roblox.com/v1/catalog/items/details?ItemIds={asset_id}&ItemType=Asset") as r:
-        try:
+    # 1. Catalog API yang bener - harus POST, bukan GET
+    try:
+        async with session.post(
+            "https://catalog.roblox.com/v1/catalog/items/details",
+            json={"items": [{"id": int(asset_id), "itemType": "Asset"}]}
+        ) as r:
             data = await r.json()
             if data.get("data"):
-                return data["data"][0]
-        except:
-            pass
-        return None
+                d = data["data"][0]
+                harga = d.get("price") or d.get("lowestPrice") or d.get("priceInRobux") or 0
+                return {"name": d.get("name", f"Item {asset_id}"), "price": int(harga) if harga else 0}
+    except:
+        pass
+    # 2. Fallback - Economy API, paling akurat buat Limited / Offsale
+    try:
+        async with session.get(f"https://economy.roblox.com/v2/assets/{asset_id}/details") as r:
+            data = await r.json()
+            if data.get("Name"):
+                harga = data.get("PriceInRobux") or data.get("LowestPrice") or 0
+                return {"name": data.get("Name"), "price": int(harga) if harga else 0}
+    except:
+        pass
+    return {"name": f"Item {asset_id}", "price": 0}
 
 async def kirim_hasil_checkavatar(interaction, username):
     await interaction.response.defer(ephemeral=False)
@@ -548,17 +562,10 @@ async def kirim_hasil_checkavatar(interaction, username):
             teks_item = "**Item yang dipake :**\n"
             for aid in wearing[:10]:
                 det = await get_rbx_asset(session, aid)
-                if det:
-                    harga_item = det.get('price') or det.get('lowestPrice') or det.get('priceInRobux') or 0
-                    try:
-                        harga_item = int(harga_item)
-                    except:
-                        harga_item = 0
-                    total_harga += harga_item
-                    harga_str = f"{harga_item:,} R$" if harga_item > 0 else "Gratis / Limited"
-                    teks_item += f"• [{det.get('name', f'Item {aid}')}](https://www.roblox.com/catalog/{aid}) - {harga_str}\n"
-                else:
-                    teks_item += f"• [Item {aid}](https://www.roblox.com/catalog/{aid})\n"
+                harga_item = det.get('price', 0) or 0
+                total_harga += harga_item
+                harga_str = f"{harga_item:,} R$" if harga_item > 0 else "Gratis / Offsale"
+                teks_item += f"• [{det.get('name', f'Item {aid}')}](https://www.roblox.com/catalog/{aid}) - {harga_str}\n"
         else:
             teks_item = "**Item yang dipake :**\nTidak ada item / avatar default."
 
