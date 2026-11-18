@@ -406,7 +406,15 @@ class CatalogLayout(discord.ui.LayoutView):
 
 @bot.tree.command(name="product", description="Lihat katalog produk Mipi Store")
 async def product(interaction: discord.Interaction):
-    await interaction.response.send_message(view=CatalogLayout("bot"))
+    try:
+        await interaction.response.defer(ephemeral=False)
+        await interaction.followup.send(view=CatalogLayout("bot"))
+    except Exception as e:
+        print(f"ERROR product: {e}")
+        try:
+            await interaction.followup.send(f"❌ Error: {e}", ephemeral=True)
+        except:
+            pass
 
 class TicketView(discord.ui.View):
     def __init__(self):
@@ -417,13 +425,21 @@ class TicketView(discord.ui.View):
 
 @bot.tree.command(name="ticket", description="Kirim panel open ticket")
 async def ticket(interaction: discord.Interaction):
-    embed = discord.Embed(title="MIPI STORE - OPEN!", description="**List Bisa Dibuat / Dibeli:**\n> 🤖 Jasa Buat Bot - Mulai 25K\n> 🛠️ Jasa Setup DC - Mulai 25K\n\n**Cara Order:**\n1. Ke channel `#🛍️・product` pilih produk\n2. Pencet Order -> Isi Form -> Ticket langsung keisi!\n\n*Pembayaran QRIS 💖*", color=0x2B2D31)
-    await interaction.response.send_message(embed=embed, view=TicketView())
+    try:
+        await interaction.response.defer(ephemeral=False)
+        embed = discord.Embed(title="MIPI STORE - OPEN!", description="**List Bisa Dibuat / Dibeli:**\n> 🤖 Jasa Buat Bot - Mulai 25K\n> 🛠️ Jasa Setup DC - Mulai 25K\n\n**Cara Order:**\n1. Ke channel `#🛍️・product` pilih produk\n2. Pencet Order -> Isi Form -> Ticket langsung keisi!\n\n*Pembayaran QRIS 💖*", color=0x2B2D31)
+        await interaction.followup.send(embed=embed, view=TicketView())
+    except Exception as e:
+        print(f"ERROR ticket: {e}")
 
 @bot.tree.command(name="pricelist", description="Lihat pricelist")
 async def pricelist(interaction: discord.Interaction):
-    embed = discord.Embed(title="💖 PRICELIST - MIPI STORE", description="**🤖 JASA BUAT BOT**\n> SIMPLE - 25K\n> MEDIUM - 50K\n> FULL - 100K\n> PREMIUM - 150K\n> SULTAN - 250K\n> GOD - 500K\n> BOT MUSIC - 30K\n\n**🛠️ JASA SETUP DC**\n> SETUP SIMPLE - 25K\n> SETUP MEDIUM - 50K\n> SETUP FULL - 100K\n> SETUP PREMIUM - 150K\n> SETUP SULTAN - 250K\n\n*Pembayaran QRIS 💖*", color=0x2B2D31)
-    await interaction.response.send_message(embed=embed)
+    try:
+        await interaction.response.defer(ephemeral=False)
+        embed = discord.Embed(title="💖 PRICELIST - MIPI STORE", description="**🤖 JASA BUAT BOT**\n> SIMPLE - 25K\n> MEDIUM - 50K\n> FULL - 100K\n> PREMIUM - 150K\n> SULTAN - 250K\n> GOD - 500K\n> BOT MUSIC - 30K\n\n**🛠️ JASA SETUP DC**\n> SETUP SIMPLE - 25K\n> SETUP MEDIUM - 50K\n> SETUP FULL - 100K\n> SETUP PREMIUM - 150K\n> SETUP SULTAN - 250K\n\n*Pembayaran QRIS 💖*", color=0x2B2D31)
+        await interaction.followup.send(embed=embed)
+    except Exception as e:
+        print(f"ERROR pricelist: {e}")
 
 @bot.tree.command(name="setup_store", description="Buat channel vouch, order-logs, testimoni kaya Issa")
 async def setup_store(interaction: discord.Interaction):
@@ -446,8 +462,7 @@ async def setup_store(interaction: discord.Interaction):
     await interaction.followup.send("✅ Berhasil! Channel #🛍️・product, #⭐・vouch, #🧾・order-logs, #⭐・testimoni udah dibuat!\nSekarang ketik `/product` di #🛍️・product!", ephemeral=True)
 
 # ============================================================
-# ========== CHECK AVATAR - FIX NGEBUG ==========
-# ========== GA AUTO HAPUS, GA PIN SPAM, ITEM DIFILTER ==========
+# ========== CHECK AVATAR - FIX DID NOT RESPOND + NGEBUG ==========
 # ============================================================
 
 async def get_rbx_user_id(session, username):
@@ -498,55 +513,67 @@ def filter_item_bagus(assets):
     return hasil
 
 async def kirim_hasil_checkavatar(interaction, username):
-    await interaction.response.defer(ephemeral=False)
-    async with aiohttp.ClientSession() as session:
-        user_id = await get_rbx_user_id(session, username)
-        if not user_id:
-            await interaction.followup.send(f"❌ Username **{username}** ga ketemu!", ephemeral=True)
-            return
-        info = await get_rbx_user_info(session, user_id)
-        avatar_url = await get_rbx_avatar(session, user_id)
-        assets = await get_rbx_avatar_details(session, user_id)
+    # FIX: defer dulu biar ga did not respond kalo API Roblox lemot
+    try:
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=False)
+    except:
+        pass
+    try:
+        async with aiohttp.ClientSession() as session:
+            user_id = await get_rbx_user_id(session, username)
+            if not user_id:
+                await interaction.followup.send(f"❌ Username **{username}** ga ketemu!", ephemeral=True)
+                return
+            info = await get_rbx_user_info(session, user_id)
+            avatar_url = await get_rbx_avatar(session, user_id)
+            assets = await get_rbx_avatar_details(session, user_id)
 
-        tampil_assets = filter_item_bagus(assets)
+            tampil_assets = filter_item_bagus(assets)
 
-        if tampil_assets:
-            teks_item = "### 👗 Item Yang Dipake\n"
-            for a in tampil_assets:
-                aid = a.get("id")
-                nama = a.get("name", f"Item {aid}")
-                teks_item += f"> [{nama}](https://www.roblox.com/catalog/{aid})\n"
-        else:
-            teks_item = "### 👗 Item Yang Dipake\n> Avatar default / item tidak terbaca."
+            if tampil_assets:
+                teks_item = "### 👗 Item Yang Dipake\n"
+                for a in tampil_assets:
+                    aid = a.get("id")
+                    nama = a.get("name", f"Item {aid}")
+                    teks_item += f"> [{nama}](https://www.roblox.com/catalog/{aid})\n"
+            else:
+                teks_item = "### 👗 Item Yang Dipake\n> Avatar default / item tidak terbaca."
 
-        bio = info.get('description') or 'Tidak ada bio'
-        if len(bio) > 120:
-            bio = bio[:120] + "..."
+            bio = info.get('description') or 'Tidak ada bio'
+            if len(bio) > 120:
+                bio = bio[:120] + "..."
 
-        view = discord.ui.LayoutView()
-        container = discord.ui.Container(accent_color=0xFF69B4)
-        container.add_item(discord.ui.TextDisplay(
-            f"## ✦ MIPI STORE • CHECK AVATAR\n"
-            f"✦ ───────────────────── ✦\n"
-            f"**👤 Username :** `{info.get('name')}`\n"
-            f"**✨ Display :** `{info.get('displayName')}`\n"
-            f"**🆔 User ID :** `{user_id}`\n"
-            f"**📝 Bio :** {bio}\n"
-            f"✦ ───────────────────── ✦\n"
-            f"Di-cek sama {interaction.user.mention}"
-        ))
-        container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
-        if avatar_url:
-            container.add_item(discord.ui.MediaGallery(discord.MediaGalleryItem(media=avatar_url)))
-        container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
-        container.add_item(discord.ui.TextDisplay(teks_item))
-        container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
-        row = discord.ui.ActionRow()
-        row.add_item(discord.ui.Button(label="Buka Profil Roblox", style=discord.ButtonStyle.link, url=f"https://www.roblox.com/users/{user_id}/profile", emoji="👤"))
-        container.add_item(row)
-        container.add_item(discord.ui.TextDisplay("-# ✦ MIPI STORE • Check Avatar • Panel ada di pinned, tinggal klik 📌"))
-        view.add_item(container)
-        await interaction.followup.send(view=view)
+            view = discord.ui.LayoutView()
+            container = discord.ui.Container(accent_color=0xFF69B4)
+            container.add_item(discord.ui.TextDisplay(
+                f"## ✦ MIPI STORE • CHECK AVATAR\n"
+                f"✦ ───────────────────── ✦\n"
+                f"**👤 Username :** `{info.get('name')}`\n"
+                f"**✨ Display :** `{info.get('displayName')}`\n"
+                f"**🆔 User ID :** `{user_id}`\n"
+                f"**📝 Bio :** {bio}\n"
+                f"✦ ───────────────────── ✦\n"
+                f"Di-cek sama {interaction.user.mention}"
+            ))
+            container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
+            if avatar_url:
+                container.add_item(discord.ui.MediaGallery(discord.MediaGalleryItem(media=avatar_url)))
+            container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
+            container.add_item(discord.ui.TextDisplay(teks_item))
+            container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
+            row = discord.ui.ActionRow()
+            row.add_item(discord.ui.Button(label="Buka Profil Roblox", style=discord.ButtonStyle.link, url=f"https://www.roblox.com/users/{user_id}/profile", emoji="👤"))
+            container.add_item(row)
+            container.add_item(discord.ui.TextDisplay("-# ✦ MIPI STORE • Check Avatar • Panel ada di pinned, tinggal klik 📌"))
+            view.add_item(container)
+            await interaction.followup.send(view=view)
+    except Exception as e:
+        print(f"ERROR kirim_hasil_checkavatar: {e}")
+        try:
+            await interaction.followup.send(f"❌ Gagal cek avatar: {e}\nCoba lagi ya!", ephemeral=True)
+        except:
+            pass
 
 class CheckAvatarModal(discord.ui.Modal, title="Check Avatar Roblox"):
     username_input = discord.ui.TextInput(label="Username Roblox", placeholder="Contoh: 1mrafii", required=True, max_length=20)
@@ -648,41 +675,82 @@ async def checkavatar(interaction: discord.Interaction, username: str):
 
 @bot.tree.command(name="cekrbx", description="Cek RBX / Gamepass")
 async def cekrbx(interaction: discord.Interaction, username: str = None, link_gamepass: str = None):
-    if not username:
-        await interaction.response.send_modal(CheckRbxModal())
-        return
-    await interaction.response.send_message(f"## Mipi Store CHECK\n**Username :** {username}\n**Gamepass :** {link_gamepass or 'Tidak diisi'}\n\nCek di Roblox > Revenue > Pending Sales ya!\nRoblox hold Robux **3 - 7 hari**, itu normal.", ephemeral=True)
+    try:
+        if not username:
+            await interaction.response.send_modal(CheckRbxModal())
+            return
+        await interaction.response.send_message(f"## Mipi Store CHECK\n**Username :** {username}\n**Gamepass :** {link_gamepass or 'Tidak diisi'}\n\nCek di Roblox > Revenue > Pending Sales ya!\nRoblox hold Robux **3 - 7 hari**, itu normal.", ephemeral=True)
+    except Exception as e:
+        print(f"ERROR cekrbx: {e}")
 
 @bot.tree.command(name="checkavatar-panel", description="Kirim panel cek avatar (Owner only)")
 async def checkavatar_panel(interaction: discord.Interaction):
-    if interaction.user.id != interaction.guild.owner_id:
-        await interaction.response.send_message("❌ Hanya Owner!", ephemeral=True); return
-    await interaction.response.send_message(view=CheckAvatarPanelLayout())
+    try:
+        if interaction.user.id != interaction.guild.owner_id:
+            await interaction.response.send_message("❌ Hanya Owner!", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send(view=CheckAvatarPanelLayout())
+        await interaction.followup.send("✅ Panel Check Avatar berhasil dikirim!", ephemeral=True)
+    except Exception as e:
+        print(f"ERROR checkavatar-panel: {e}")
+        try:
+            await interaction.followup.send(f"❌ Gagal kirim panel: {e}", ephemeral=True)
+        except:
+            pass
 
 @bot.tree.command(name="cekrbx-panel", description="Kirim panel cek rbx (Owner only)")
 async def cekrbx_panel(interaction: discord.Interaction):
-    if interaction.user.id != interaction.guild.owner_id:
-        await interaction.response.send_message("❌ Hanya Owner!", ephemeral=True); return
-    await interaction.response.send_message(view=CheckRbxPanelLayout())
+    try:
+        if interaction.user.id != interaction.guild.owner_id:
+            await interaction.response.send_message("❌ Hanya Owner!", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send(view=CheckRbxPanelLayout())
+        await interaction.followup.send("✅ Panel Cek RBX berhasil dikirim!", ephemeral=True)
+    except Exception as e:
+        print(f"ERROR cekrbx-panel: {e}")
+        try:
+            await interaction.followup.send(f"❌ Gagal kirim panel: {e}", ephemeral=True)
+        except:
+            pass
 
 @bot.tree.command(name="setup-cek", description="Bikin channel cek avatar + cek rbx (Owner only)")
 async def setup_cek(interaction: discord.Interaction):
-    if interaction.user.id != interaction.guild.owner_id:
-        await interaction.response.send_message("❌ Hanya Owner!", ephemeral=True); return
-    await interaction.response.defer(ephemeral=True)
-    guild = interaction.guild
-    for ch in list(guild.channels):
-        if ch.name in ["check-avatar", "cek-rbx", "hasil-check", "🔍┆・check-avatar", "💰┆・cek-rbx", "✅┆・hasil-check", "✦┆・verifikasi", "✅┆・verifikasi"]:
-            try: await ch.delete()
-            except: pass
-    ch1 = await guild.create_text_channel("🔍┆・check-avatar")
-    ch2 = await guild.create_text_channel("💰┆・cek-rbx")
-    msg = await ch1.send(view=CheckAvatarPanelLayout())
     try:
-        await msg.pin()
-    except:
-        pass
-    await ch2.send(view=CheckRbxPanelLayout())
-    await interaction.followup.send(f"✅ Berhasil! {ch1.mention} + {ch2.mention} udah dibuat!\nPanel di {ch1.mention} cuma di-pin 1x, ga auto hapus lagi jadi ga ngebug!", ephemeral=True)
+        if interaction.user.id != interaction.guild.owner_id:
+            await interaction.response.send_message("❌ Hanya Owner!", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        guild = interaction.guild
+        for ch in list(guild.channels):
+            if ch.name in ["check-avatar", "cek-rbx", "hasil-check", "🔍┆・check-avatar", "💰┆・cek-rbx", "✅┆・hasil-check", "✦┆・verifikasi", "✅┆・verifikasi"]:
+                try: await ch.delete()
+                except: pass
+        ch1 = await guild.create_text_channel("🔍┆・check-avatar")
+        ch2 = await guild.create_text_channel("💰┆・cek-rbx")
+        msg = await ch1.send(view=CheckAvatarPanelLayout())
+        try:
+            await msg.pin()
+        except:
+            pass
+        await ch2.send(view=CheckRbxPanelLayout())
+        await interaction.followup.send(f"✅ Berhasil! {ch1.mention} + {ch2.mention} udah dibuat!\nPanel di {ch1.mention} cuma di-pin 1x, ga auto hapus lagi jadi ga ngebug!", ephemeral=True)
+    except Exception as e:
+        print(f"ERROR setup-cek: {e}")
+        try:
+            await interaction.followup.send(f"❌ Gagal setup: {e}", ephemeral=True)
+        except:
+            pass
+
+@bot.event
+async def setup_hook():
+    try:
+        bot.add_view(CheckAvatarPanelLayout())
+        bot.add_view(CheckRbxPanelLayout())
+        bot.add_view(TicketActionView())
+        print("Persistent views registered")
+    except Exception as e:
+        print(f"setup_hook error: {e}")
 
 bot.run(os.getenv("DISCORD_TOKEN"))
